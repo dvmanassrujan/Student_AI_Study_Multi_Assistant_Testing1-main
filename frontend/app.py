@@ -1825,7 +1825,7 @@ with gr.Blocks(title="GenAI Video Intelligence Studio & Autonomous Production Pl
 
                 with gr.Row():
                     yt_prev_page_btn = gr.Button("◀ Previous Page", variant="secondary", scale=1)
-                    yt_page_indicator = gr.Markdown("Showing 0 comments", scale=2)
+                    yt_page_indicator = gr.Markdown("Showing 0 comments")
                     yt_next_page_btn = gr.Button("Next Page ▶", variant="secondary", scale=1)
                     yt_load_more_btn = gr.Button("📥 Load More Comments (+10)", variant="primary", scale=2)
                     yt_refetch_comments_btn = gr.Button("🔄 Re-fetch / Expand from YouTube", variant="secondary", scale=2)
