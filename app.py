@@ -4,6 +4,25 @@ Automatically starts Ollama in the background on Hugging Face Spaces (16 GB RAM)
 and launches the Multi-Assistant Gradio UI immediately to prevent startup timeouts.
 """
 
+# Compatibility Shim: Gradio 4.x oauth expects huggingface_hub.HfFolder
+try:
+    import huggingface_hub
+    if not hasattr(huggingface_hub, "HfFolder"):
+        class HfFolder:
+            @staticmethod
+            def get_token():
+                import os
+                return os.environ.get("HF_TOKEN")
+            @staticmethod
+            def save_token(token):
+                pass
+            @staticmethod
+            def delete_token():
+                pass
+        huggingface_hub.HfFolder = HfFolder
+except Exception:
+    pass
+
 import os
 import sys
 import time
