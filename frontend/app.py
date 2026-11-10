@@ -2373,4 +2373,4 @@ with gr.Blocks(title="GenAI Video Intelligence Studio & Autonomous Production Pl
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 7860))
-    demo.launch(server_name="0.0.0.0", server_port=port, allowed_paths=[str(root_dir)], show_api=False)
+    demo.launch(server_name="0.0.0.0", server_port=port, allowed_paths=[str(root_dir)])

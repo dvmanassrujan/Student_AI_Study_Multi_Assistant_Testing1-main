@@ -23,6 +23,18 @@ try:
 except Exception:
     pass
 
+# Compatibility Shim: gradio_client json schema generator for boolean additionalProperties
+try:
+    import gradio_client.utils
+    _orig_get_type = gradio_client.utils.get_type
+    def safe_get_type(schema):
+        if not isinstance(schema, dict):
+            return "Any"
+        return _orig_get_type(schema)
+    gradio_client.utils.get_type = safe_get_type
+except Exception:
+    pass
+
 # Support Hugging Face ZeroGPU runtime if space uses zero-a10g
 try:
     import spaces
@@ -128,4 +140,4 @@ from frontend.app import demo
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 7860))
     print(f"Launching Gradio application on 0.0.0.0:{port}...")
-    demo.launch(server_name="0.0.0.0", server_port=port, allowed_paths=[str(root_dir)], show_api=False)
+    demo.launch(server_name="0.0.0.0", server_port=port, allowed_paths=[str(root_dir)])
