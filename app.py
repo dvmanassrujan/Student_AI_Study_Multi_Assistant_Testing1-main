@@ -40,7 +40,6 @@ try:
     import jinja2
     _orig_env_init = jinja2.Environment.__init__
     def safe_env_init(self, *args, **kwargs):
-        kwargs['cache_size'] = 0
         _orig_env_init(self, *args, **kwargs)
         self.cache = None
     jinja2.Environment.__init__ = safe_env_init
