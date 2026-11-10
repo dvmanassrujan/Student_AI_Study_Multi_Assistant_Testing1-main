@@ -38,15 +38,16 @@ except Exception:
 # Compatibility Shim: Jinja2 unhashable dict cache_key in template loading
 try:
     import jinja2
+    _orig_env_init = jinja2.Environment.__init__
+    def safe_env_init(self, *args, **kwargs):
+        kwargs['cache_size'] = 0
+        _orig_env_init(self, *args, **kwargs)
+        self.cache = None
+    jinja2.Environment.__init__ = safe_env_init
+
     _orig_load_template = jinja2.Environment._load_template
     def safe_load_template(self, name, globals=None):
-        if globals is not None:
-            old_cache = self.cache
-            self.cache = None
-            try:
-                return _orig_load_template(self, name, globals)
-            finally:
-                self.cache = old_cache
+        self.cache = None
         return _orig_load_template(self, name, globals)
     jinja2.Environment._load_template = safe_load_template
 except Exception:
