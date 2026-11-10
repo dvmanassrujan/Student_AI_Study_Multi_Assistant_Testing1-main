@@ -35,6 +35,23 @@ try:
 except Exception:
     pass
 
+# Compatibility Shim: Jinja2 unhashable dict cache_key in template loading
+try:
+    import jinja2
+    _orig_load_template = jinja2.Environment._load_template
+    def safe_load_template(self, name, globals=None):
+        if globals is not None:
+            old_cache = self.cache
+            self.cache = None
+            try:
+                return _orig_load_template(self, name, globals)
+            finally:
+                self.cache = old_cache
+        return _orig_load_template(self, name, globals)
+    jinja2.Environment._load_template = safe_load_template
+except Exception:
+    pass
+
 # Support Hugging Face ZeroGPU runtime if space uses zero-a10g
 try:
     import spaces
