@@ -26,12 +26,12 @@ except Exception:
 # Compatibility Shim: gradio_client json schema generator for boolean additionalProperties
 try:
     import gradio_client.utils
-    _orig_get_type = gradio_client.utils.get_type
-    def safe_get_type(schema):
+    _orig_json_schema = gradio_client.utils._json_schema_to_python_type
+    def safe_json_schema_to_python_type(schema, defs=None):
         if not isinstance(schema, dict):
             return "Any"
-        return _orig_get_type(schema)
-    gradio_client.utils.get_type = safe_get_type
+        return _orig_json_schema(schema, defs)
+    gradio_client.utils._json_schema_to_python_type = safe_json_schema_to_python_type
 except Exception:
     pass
 
