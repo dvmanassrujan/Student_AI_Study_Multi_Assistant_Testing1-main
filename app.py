@@ -23,6 +23,15 @@ try:
 except Exception:
     pass
 
+# Support Hugging Face ZeroGPU runtime if space uses zero-a10g
+try:
+    import spaces
+    @spaces.GPU
+    def zerogpu_probe():
+        return True
+except Exception:
+    pass
+
 import os
 import sys
 import time
