@@ -128,4 +128,4 @@ from frontend.app import demo
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 7860))
     print(f"Launching Gradio application on 0.0.0.0:{port}...")
-    demo.launch(server_name="0.0.0.0", server_port=port, allowed_paths=[str(root_dir)])
+    demo.launch(server_name="0.0.0.0", server_port=port, allowed_paths=[str(root_dir)], show_api=False)
