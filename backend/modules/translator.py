@@ -2,7 +2,17 @@ import logging
 import traceback
 from typing import Dict, Any, Optional, Tuple
 from backend.core.llm import get_llm
-from langchain_core.messages import SystemMessage, HumanMessage
+try:
+    from langchain_core.messages import SystemMessage, HumanMessage
+except ImportError:
+    class SystemMessage:
+        def __init__(self, content: str):
+            self.content = content
+            self.type = "system"
+    class HumanMessage:
+        def __init__(self, content: str):
+            self.content = content
+            self.type = "human"
 
 # Configure module logger
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

@@ -256,8 +256,7 @@ async def stream_job_events(job_id: str):
 @app.post("/api/agents/exam-prep")
 def generate_exam_prep_endpoint(req: ExamPrepApiRequest):
     """Generates mock tests, quizzes, and revision questions via the Exam Coach Agent."""
-    from backend.agents.orchestrator import app_graph
-    from langchain_core.messages import HumanMessage
+    from backend.agents.orchestrator import app_graph, HumanMessage
     
     clean_topic = req.topic.strip()
     if not clean_topic:
@@ -286,8 +285,7 @@ def generate_exam_prep_endpoint(req: ExamPrepApiRequest):
 @app.post("/api/agents/study-planner")
 def generate_study_plan_endpoint(req: StudyPlanApiRequest):
     """Generates personalized study timetables and milestones via the Study Planner Agent."""
-    from backend.agents.orchestrator import app_graph
-    from langchain_core.messages import HumanMessage
+    from backend.agents.orchestrator import app_graph, HumanMessage
     
     clean_topic = req.topic.strip()
     if not clean_topic:
@@ -316,8 +314,7 @@ def generate_study_plan_endpoint(req: StudyPlanApiRequest):
 @app.post("/api/agents/coding-lab")
 def run_coding_lab_endpoint(req: CodingLabApiRequest):
     """Executes debugging, code explanation, optimization, or DSA coaching via the Senior Coding Mentor."""
-    from backend.agents.orchestrator import app_graph
-    from langchain_core.messages import HumanMessage
+    from backend.agents.orchestrator import app_graph, HumanMessage
     
     safe_mode = req.mode or "Debug Code"
     safe_lang = req.language or "Python"

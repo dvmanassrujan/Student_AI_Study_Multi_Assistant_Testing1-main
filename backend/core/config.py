@@ -1,21 +1,33 @@
 import os
-from dotenv import load_dotenv
+from pathlib import Path
 
-load_dotenv()
+# Safe loading of .env without hard dependency on python-dotenv
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    env_file = Path(__file__).resolve().parent.parent.parent / ".env"
+    if env_file.exists():
+        with open(env_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    os.environ.setdefault(k.strip(), v.strip().strip("'\""))
 
 class Settings:
-    # Centralized Meta Llama 3.2:latest Ollama Configuration
-    MODEL_PROVIDER: str = os.getenv("MODEL_PROVIDER", "ollama")
-    MODEL_NAME: str = os.getenv("MODEL_NAME", "llama3.2:latest")
-    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "llama3.2:latest")
+    # Model-Free Deterministic Intelligence Configuration
+    MODEL_PROVIDER: str = os.getenv("MODEL_PROVIDER", "model_free")
+    MODEL_NAME: str = os.getenv("MODEL_NAME", "model-free-engine-v1")
+    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "model-free-engine-v1")
     OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
-    LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", "0.3"))
-    LLM_TOP_P: float = float(os.getenv("LLM_TOP_P", "0.9"))
-    LLM_REPEAT_PENALTY: float = float(os.getenv("LLM_REPEAT_PENALTY", "1.1"))
+    LLM_TEMPERATURE: float = float(os.getenv("LLM_TEMPERATURE", "0.0"))
+    LLM_TOP_P: float = float(os.getenv("LLM_TOP_P", "1.0"))
+    LLM_REPEAT_PENALTY: float = float(os.getenv("LLM_REPEAT_PENALTY", "1.0"))
     LLM_NUM_CTX: int = int(os.getenv("LLM_NUM_CTX", "8192"))
     LLM_SEED: int = int(os.getenv("LLM_SEED", "42"))
-    LLM_TIMEOUT: int = int(os.getenv("LLM_TIMEOUT", "300"))
+    LLM_TIMEOUT: int = int(os.getenv("LLM_TIMEOUT", "60"))
 
     # GenAI Video Intelligence Studio Settings
     YOUTUBE_API_KEY: str = os.getenv("YOUTUBE_API_KEY", "")

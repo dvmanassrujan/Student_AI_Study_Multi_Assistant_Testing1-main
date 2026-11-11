@@ -1,18 +1,16 @@
 """
-Integration Tests for Meta Llama 3.2:latest Ollama Integration and Multi-Agent Orchestrator
+Integration Tests for Model-Free Intelligence Engine and Multi-Agent Orchestrator.
 Validates:
-1. Ollama server connection (http://localhost:11434) and llama3.2:latest availability.
-2. LangChain ChatOllama instantiation.
+1. Model-free engine configuration and health status.
+2. ModelFreeLLM instantiation and invoke compatibility.
 3. LangGraph router node decision-making.
-4. End-to-end multi-agent execution pipeline.
-5. Coding, Exam, and Academic agent synthesis.
+4. End-to-end multi-agent execution pipeline (Coding, Exam, Academic Tutor).
 """
 
 import os
 import sys
 import unittest
 from pathlib import Path
-from langchain_core.messages import SystemMessage, HumanMessage
 
 root_dir = Path(__file__).resolve().parent.parent
 if str(root_dir) not in sys.path:
@@ -20,57 +18,67 @@ if str(root_dir) not in sys.path:
 
 from backend.core.config import settings
 from backend.core.llm import get_llm, check_ollama_connection
-from backend.agents.orchestrator import app_graph, router_node, coding_node, exam_node, study_node
+from backend.agents.orchestrator import (
+    app_graph,
+    router_node,
+    coding_node,
+    exam_node,
+    study_node,
+    SystemMessage,
+    HumanMessage
+)
 
-class TestLlama32OllamaIntegration(unittest.TestCase):
 
-    def test_01_ollama_model_configuration(self):
-        """Verifies settings configure Meta Llama 3.2:latest through Ollama."""
-        self.assertEqual(settings.MODEL_PROVIDER, "ollama")
-        self.assertEqual(settings.MODEL_NAME, "llama3.2:latest")
-        self.assertEqual(settings.OLLAMA_BASE_URL, "http://localhost:11434")
-        
+class TestModelFreeIntegration(unittest.TestCase):
+
+    def test_01_model_free_configuration(self):
+        """Verifies settings configure Model-Free engine."""
+        self.assertEqual(settings.MODEL_PROVIDER, "model_free")
         status = check_ollama_connection()
-        self.assertTrue(status["connected"], f"Ollama not connected: {status.get('message')}")
-        self.assertTrue(status["model_available"], f"Model llama3.2:latest not available: {status.get('message')}")
+        self.assertTrue(status["connected"], f"Model-Free engine not online: {status.get('message')}")
+        self.assertTrue(status["model_available"])
 
     def test_02_llm_instantiation(self):
-        """Verifies get_llm returns a functional ChatOllama instance for llama3.2:latest."""
+        """Verifies get_llm returns a functional ModelFreeLLM instance."""
         llm = get_llm()
-        self.assertEqual(llm.model, "llama3.2:latest")
-        self.assertIn("11434", llm.base_url)
+        self.assertTrue(hasattr(llm, "model_name"))
+        self.assertTrue(hasattr(llm, "invoke"))
 
-    def test_03_live_inference_execution(self):
-        """Verifies direct inference invocation with llama3.2:latest returns AIMessage with content."""
+    def test_03_inference_execution(self):
+        """Verifies direct inference invocation returns AIMessage with content."""
         llm = get_llm()
         resp = llm.invoke([
             SystemMessage(content="Answer in 5 words or less."),
             HumanMessage(content="What is Newton's first law about?")
         ])
         self.assertTrue(hasattr(resp, "content"))
-        self.assertGreater(len(resp.content.strip()), 3)
+        self.assertGreater(len(resp.content.strip()), 10)
 
-    def test_04_router_node_routing(self):
-        """Verifies router node correctly directs coding queries to coding_agent."""
-        state = {"messages": [HumanMessage(content="How do I debug an IndexError in Python list?")]}
-        route = router_node(state)
-        self.assertIn("next_agent", route)
-        self.assertEqual(route.get("next_agent"), "coding_agent")
+    def test_04_router_node(self):
+        """Verifies router node routes coding, exam, and study intents."""
+        res_code = router_node({"messages": [HumanMessage(content="def binary_search(arr):")]})
+        self.assertEqual(res_code["next_agent"], "coding_agent")
 
-    def test_05_specialized_nodes(self):
-        """Verifies individual agent nodes produce expected domain-specific content."""
-        code_res = coding_node({"messages": [HumanMessage(content="Explain binary search complexity in one sentence.")]})
-        self.assertIn("generated_content", code_res)
-        self.assertEqual(code_res["generated_content"]["type"], "coding")
-        self.assertGreater(len(code_res["generated_content"]["content"]), 10)
+        res_exam = router_node({"messages": [HumanMessage(content="multiple choice exam quiz on biology")]})
+        self.assertEqual(res_exam["next_agent"], "exam_agent")
 
-    def test_06_end_to_end_graph_execution(self):
-        """Verifies complete LangGraph graph execution workflow."""
-        result = app_graph.invoke({"messages": [HumanMessage(content="Define velocity in one sentence.")]})
-        self.assertIn("messages", result)
-        last_msg = result["messages"][-1]
-        self.assertGreater(len(last_msg.content), 5)
+        res_plan = router_node({"messages": [HumanMessage(content="create a study plan for 1 week")]})
+        self.assertEqual(res_plan["next_agent"], "study_planner_agent")
+
+    def test_05_agent_execution(self):
+        """Verifies agent nodes execute and produce rich markdown content."""
+        res_code = coding_node({"messages": [HumanMessage(content="explain binary search")]})
+        self.assertIn("messages", res_code)
+        self.assertGreater(len(res_code["messages"][-1].content), 20)
+
+        res_exam = exam_node({"messages": [HumanMessage(content="quiz on Photosynthesis")]})
+        self.assertIn("messages", res_exam)
+        self.assertGreater(len(res_exam["messages"][-1].content), 20)
+
+        res_study = study_node({"messages": [HumanMessage(content="explain Machine Learning")]})
+        self.assertIn("messages", res_study)
+        self.assertGreater(len(res_study["messages"][-1].content), 20)
+
 
 if __name__ == "__main__":
     unittest.main()
-

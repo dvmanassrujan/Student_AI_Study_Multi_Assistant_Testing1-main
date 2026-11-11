@@ -7,7 +7,10 @@ Verifies:
 """
 
 import sys
-import requests
+try:
+    import requests
+except ImportError:
+    requests = None
 from pathlib import Path
 
 # Add project root to sys.path
@@ -17,7 +20,10 @@ if str(root_dir) not in sys.path:
 
 from backend.core.config import settings, OLLAMA_BASE_URL, OLLAMA_MODEL
 from backend.core.llm import get_llm, check_ollama_connection
-from langchain_core.messages import SystemMessage, HumanMessage
+try:
+    from langchain_core.messages import SystemMessage, HumanMessage
+except ImportError:
+    from backend.agents.orchestrator import SystemMessage, HumanMessage
 
 def check_ollama():
     print("=" * 65)

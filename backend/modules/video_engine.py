@@ -13,17 +13,30 @@ from pathlib import Path
 from typing import Tuple, Optional, List, Dict, Any, Union
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance, ImageOps
+try:
+    from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance, ImageOps
+except ImportError:
+    Image = None
+    ImageDraw = ImageFont = ImageFilter = ImageEnhance = ImageOps = None
 
 try:
     from moviepy import ImageClip, ColorClip, CompositeVideoClip, AudioFileClip, VideoClip, concatenate_videoclips
-except (ImportError, ModuleNotFoundError):
-    from moviepy.editor import ImageClip, ColorClip, CompositeVideoClip, AudioFileClip, VideoClip, concatenate_videoclips
+except Exception:
+    try:
+        from moviepy.editor import ImageClip, ColorClip, CompositeVideoClip, AudioFileClip, VideoClip, concatenate_videoclips
+    except Exception:
+        ImageClip = ColorClip = CompositeVideoClip = AudioFileClip = VideoClip = concatenate_videoclips = None
 
 from backend.modules.audio_engine import AudioNarrationEngine, detect_language
 from backend.modules.translator import translate_text, validate_translation
 from backend.core.llm import get_llm
-from langchain_core.messages import HumanMessage
+try:
+    from langchain_core.messages import HumanMessage
+except ImportError:
+    class HumanMessage:
+        def __init__(self, content: str):
+            self.content = content
+            self.type = "human"
 
 # Configure module logger
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

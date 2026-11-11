@@ -20,13 +20,26 @@ import urllib.parse
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple, Union
 
-import requests
-from youtube_transcript_api import YouTubeTranscriptApi
+try:
+    import requests
+except ImportError:
+    requests = None
+
+try:
+    from youtube_transcript_api import YouTubeTranscriptApi
+except ImportError:
+    YouTubeTranscriptApi = None
 
 from backend.core.config import settings
 from backend.core.llm import get_llm
 from backend.core import studio_db
-from langchain_core.messages import HumanMessage
+try:
+    from langchain_core.messages import HumanMessage
+except ImportError:
+    class HumanMessage:
+        def __init__(self, content: str):
+            self.content = content
+            self.type = "human"
 
 logger = logging.getLogger(__name__)
 

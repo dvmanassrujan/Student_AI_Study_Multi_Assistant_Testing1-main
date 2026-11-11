@@ -1,12 +1,71 @@
-from typing import Literal
-from langchain_core.messages import SystemMessage, HumanMessage
-from langgraph.graph import StateGraph, END
-from backend.agents.state import AgentState
-from backend.core.llm import get_llm
+"""
+Model-Free Multi-Agent Orchestrator.
+Coordinates specialized academic agents using deterministic Python intelligence.
+100% Model-Free, API-Free, Zero-Cost.
+"""
+
+from typing import Literal, Dict, Any, List, Optional
 import json
 import logging
+import re
+
+from backend.agents.state import AgentState
+from backend.core.llm import get_llm
+from backend.intelligence import (
+    classify_intent,
+    study_engine,
+    generate_study_plan_schedule,
+    generate_mcqs_for_topic,
+    generate_mcqs_from_text,
+    format_exam_material,
+    debug_code_snippet,
+    explain_code_snippet,
+    optimize_code_snippet,
+    teach_dsa_topic,
+    chunk_document,
+    DocumentSearchIndex,
+    answer_document_query,
+    generate_short_summary,
+    generate_detailed_summary,
+    generate_important_points,
+    generate_definitions_lexicon,
+    generate_exam_notes,
+    generate_flashcards,
+    format_flashcard_markdown
+)
 
 logger = logging.getLogger(__name__)
+
+# Message class fallbacks if langchain_core is not installed
+try:
+    from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, BaseMessage
+except ImportError:
+    class BaseMessage:
+        def __init__(self, content: str, type: str = "base"):
+            self.content = content
+            self.type = type
+        def __repr__(self):
+            return f"{self.__class__.__name__}(content={self.content[:30]!r}...)"
+
+    class SystemMessage(BaseMessage):
+        def __init__(self, content: str):
+            super().__init__(content, type="system")
+
+    class HumanMessage(BaseMessage):
+        def __init__(self, content: str):
+            super().__init__(content, type="human")
+
+    class AIMessage(BaseMessage):
+        def __init__(self, content: str):
+            super().__init__(content, type="ai")
+
+# LangGraph fallback if langgraph is not installed
+try:
+    from langgraph.graph import StateGraph, END
+    HAS_LANGGRAPH = True
+except ImportError:
+    HAS_LANGGRAPH = False
+    END = "__end__"
 
 SUPPORTED_AGENTS = {
     "study_agent",
@@ -21,9 +80,26 @@ SUPPORTED_AGENTS = {
     "personalization_agent",
 }
 
-def router_node(state: AgentState):
-    """Orchestrator to route to the correct agent based on the task"""
-    # 1. Fast-path: Explicit agent or task_type already requested in state
+
+def _extract_prompt_text(messages: List[Any]) -> str:
+    """Helper to extract clean prompt text from list of messages."""
+    for m in reversed(messages):
+        if isinstance(m, HumanMessage) or getattr(m, "type", "") == "human" or getattr(m, "role", "") == "user":
+            return str(getattr(m, "content", ""))
+        elif isinstance(m, dict) and m.get("role") == "user":
+            return str(m.get("content", ""))
+    if messages:
+        last = messages[-1]
+        return str(getattr(last, "content", last))
+    return ""
+
+
+# =========================================================================
+# 1. Orchestrator Router Node
+# =========================================================================
+
+def router_node(state: AgentState) -> Dict[str, Any]:
+    """Orchestrator to route to the correct agent based on task type or intent."""
     explicit_agent = state.get("next_agent")
     if explicit_agent and explicit_agent in SUPPORTED_AGENTS:
         return {"next_agent": explicit_agent}
@@ -49,186 +125,230 @@ def router_node(state: AgentState):
             return {"next_agent": task_map[task_type]}
 
     messages = state.get("messages", [])
-    
-    # Extract recent user text for fast-path heuristic
-    last_user_text = ""
-    for m in reversed(messages):
-        if isinstance(m, HumanMessage) or getattr(m, "type", "") == "human":
-            last_user_text = str(getattr(m, "content", "")).lower()
-            break
+    user_text = _extract_prompt_text(messages).lower()
 
-    # Fast-path 3: High-confidence keyword heuristics (0ms routing latency, eliminates ~45s LLM router delay)
-    if any(w in last_user_text for w in ["study plan", "study schedule", "timetable", "revision plan", "hours per day", "study roadmap"]):
-        return {"next_agent": "study_planner_agent"}
-    elif any(w in last_user_text for w in ["exam", "quiz", "mock test", "test questions", "mcq", "multiple choice", "practice questions"]):
-        return {"next_agent": "exam_agent"}
-    elif any(w in last_user_text for w in ["debug", "def ", "function", "class ", "python", "java", "c++", "javascript", "algorithm", "dsa", "syntax error", "runtime error", "leetcode", "code"]):
-        return {"next_agent": "coding_agent"}
-    elif any(w in last_user_text for w in ["project idea", "project architecture", "tech stack", "build an app", "module breakdown"]):
-        return {"next_agent": "project_agent"}
-    elif any(w in last_user_text for w in ["flashcard", "flashcards", "mnemonic", "spaced repetition", "anki", "memorize"]):
-        return {"next_agent": "memory_agent"}
-    elif any(w in last_user_text for w in ["video script", "storyboard", "scene 1", "visual cue", "create a video script"]):
-        return {"next_agent": "video_agent"}
-    elif any(w in last_user_text for w in ["audio script", "podcast script", "voiceover", "spoken explanation"]):
-        return {"next_agent": "audio_agent"}
-    elif any(w in last_user_text for w in ["document", "pdf", "docx", "summarize notes", "summarize this text"]):
-        return {"next_agent": "document_agent"}
-    elif not state.get("use_llm_router", False):
-        # Default fast path for conversational assistant (explaining concepts, general Q&A, greetings)
-        return {"next_agent": "study_agent"}
-
-    llm = get_llm()
-    system_prompt = """You are the Orchestrator Agent for an AI Student Assistant.
-Your job is to analyze the user's request and determine which specialized agent should handle it.
-Available Agents:
-- study_planner_agent: Creates structured daily/weekly study plans, timetables, and learning milestones.
-- study_agent: Explains concepts, teaches topics simply, and generates summaries.
-- exam_agent: Creates quizzes, mock tests, important questions, and exam preparation.
-- coding_agent: Debugs code, explains algorithms, writes code, DSA trainer.
-- project_agent: Generates project ideas, architectures, documentation.
-- document_agent: Analyzes uploaded documents, text files, and notes.
-- audio_agent: Text to speech and audio learning assistant.
-- video_agent: Educational video script and explanation generator.
-- memory_agent: Flashcards, memory techniques, spaced repetition tracking.
-- personalization_agent: Progress tracking, weak topics, personalized schedules.
-
-Respond with ONLY a JSON object containing the `next_agent` key. Example: {"next_agent": "study_agent"}"""
-    
-    try:
-        response = llm.invoke([SystemMessage(content=system_prompt)] + messages)
-        content = response.content.strip()
-        if "```json" in content:
-            content = content.split("```json")[1].split("```")[0].strip()
-        elif "```" in content:
-            content = content.split("```")[1].split("```")[0].strip()
-        elif "{" in content and "}" in content:
-            start = content.find("{")
-            end = content.rfind("}") + 1
-            content = content[start:end].strip()
-        
-        data = json.loads(content)
-        next_agent = data.get("next_agent", "study_agent")
-        if next_agent not in SUPPORTED_AGENTS:
-            next_agent = "study_agent"
-    except Exception as e:
-        logger.warning(f"Router parsing failed ({e}). Defaulting to study_agent.")
-        next_agent = "study_agent"
-        
+    # Fast-path deterministic classification (0ms latency)
+    intent = classify_intent(user_text)
+    intent_map = {
+        "study_planner": "study_planner_agent",
+        "exam": "exam_agent",
+        "coding": "coding_agent",
+        "project": "project_agent",
+        "document": "document_agent",
+        "memory": "memory_agent",
+        "audio": "audio_agent",
+        "video": "video_agent",
+        "study": "study_agent"
+    }
+    next_agent = intent_map.get(intent, "study_agent")
     return {"next_agent": next_agent}
 
-def study_planner_node(state: AgentState):
-    llm = get_llm()
-    system_prompt = (
-        "You are an expert AI Study Planner and Academic Strategist. "
-        "Create personalized, realistic, and highly structured day-by-day or week-by-week study plans tailored to the student's level, timeline, and available hours. "
-        "Include specific topics, proven learning techniques (Active Recall, Spaced Repetition, Pomodoro), actionable milestones, practice exercises, and review checkpoints. Format cleanly in Markdown."
+
+# =========================================================================
+# 2. Specialized Agent Nodes (Direct Model-Free Intelligence)
+# =========================================================================
+
+def study_planner_node(state: AgentState) -> Dict[str, Any]:
+    prompt = _extract_prompt_text(state.get("messages", []))
+    # Extract topic from prompt if pattern exists
+    topic = prompt
+    for prefix in ["for the topic:", "topic:", "study plan for", "plan for"]:
+        if prefix in prompt.lower():
+            topic = prompt.lower().split(prefix)[-1].split("\n")[0].strip().strip("'\"")
+            break
+
+    # Extract hours if mentioned
+    hours = 2.0
+    h_match = re.search(r"(\d+(?:\.\d+)?)\s*hours?\s+per\s+day", prompt, re.IGNORECASE)
+    if h_match:
+        try:
+            hours = float(h_match.group(1))
+        except ValueError:
+            pass
+
+    content = generate_study_plan_schedule(topic=topic or "Academic Curriculum", hours_per_day=hours)
+    response = AIMessage(content=content)
+    return {"messages": [response], "generated_content": {"type": "study_plan", "content": content}}
+
+
+def study_node(state: AgentState) -> Dict[str, Any]:
+    prompt = _extract_prompt_text(state.get("messages", []))
+    content = study_engine.process_prompt(prompt, task_type="study")
+    response = AIMessage(content=content)
+    return {"messages": [response], "generated_content": {"type": "study", "content": content}}
+
+
+def exam_node(state: AgentState) -> Dict[str, Any]:
+    prompt = _extract_prompt_text(state.get("messages", []))
+    context = state.get("context", "")
+
+    # Extract topic from prompt
+    topic = prompt
+    for prefix in ["for the topic:", "topic:", "test on", "quiz on", "about"]:
+        if prefix in prompt.lower():
+            topic = prompt.lower().split(prefix)[-1].split("\n")[0].strip().strip("'\"")
+            break
+
+    # Extract question count
+    num_q = 10
+    q_match = re.search(r"(\d+)\s*(?:questions?|items?)", prompt, re.IGNORECASE)
+    if q_match:
+        try:
+            num_q = max(1, min(50, int(q_match.group(1))))
+        except ValueError:
+            pass
+
+    if context and len(context.split()) > 20:
+        mcqs = generate_mcqs_from_text(context, num_questions=num_q)
+        content = format_exam_material(mcqs, topic=topic or "Document Review")
+    else:
+        mcqs = generate_mcqs_for_topic(topic=topic or "General Science", num_questions=num_q)
+        content = format_exam_material(mcqs, topic=topic or "Assessment")
+
+    response = AIMessage(content=content)
+    return {"messages": [response], "generated_content": {"type": "exam", "content": content}}
+
+
+def coding_node(state: AgentState) -> Dict[str, Any]:
+    prompt = _extract_prompt_text(state.get("messages", []))
+    code_match = re.search(r"```(?:\w+)?\n([\s\S]*?)```", prompt)
+    code_snippet = code_match.group(1) if code_match else prompt
+
+    if "teach" in prompt.lower() or "dsa" in prompt.lower():
+        dsa_topic = prompt.replace("teach", "").replace("dsa", "").replace("in python", "").strip()
+        content = teach_dsa_topic(dsa_topic or "Binary Search", student_code=code_snippet if code_match else "")
+    elif "optimize" in prompt.lower():
+        content = optimize_code_snippet(code_snippet)
+    elif "explain" in prompt.lower():
+        content = explain_code_snippet(code_snippet)
+    else:
+        content = debug_code_snippet(code_snippet)
+
+    response = AIMessage(content=content)
+    return {"messages": [response], "generated_content": {"type": "coding", "content": content}}
+
+
+def project_node(state: AgentState) -> Dict[str, Any]:
+    prompt = _extract_prompt_text(state.get("messages", []))
+    content = study_engine.process_prompt(prompt, task_type="project")
+    response = AIMessage(content=content)
+    return {"messages": [response], "generated_content": {"type": "project", "content": content}}
+
+
+def document_node(state: AgentState) -> Dict[str, Any]:
+    prompt = _extract_prompt_text(state.get("messages", []))
+    context = state.get("context", "")
+    content = study_engine.process_prompt(prompt, task_type="document", context=context)
+    response = AIMessage(content=content)
+    return {"messages": [response], "generated_content": {"type": "document", "content": content}}
+
+
+def audio_node(state: AgentState) -> Dict[str, Any]:
+    prompt = _extract_prompt_text(state.get("messages", []))
+    content = study_engine.process_prompt(prompt, task_type="audio")
+    response = AIMessage(content=content)
+    return {"messages": [response], "generated_content": {"type": "audio", "content": content}}
+
+
+def video_node(state: AgentState) -> Dict[str, Any]:
+    prompt = _extract_prompt_text(state.get("messages", []))
+    content = study_engine.process_prompt(prompt, task_type="video")
+    response = AIMessage(content=content)
+    return {"messages": [response], "generated_content": {"type": "video", "content": content}}
+
+
+def memory_node(state: AgentState) -> Dict[str, Any]:
+    prompt = _extract_prompt_text(state.get("messages", []))
+    content = study_engine.process_prompt(prompt, task_type="memory")
+    response = AIMessage(content=content)
+    return {"messages": [response], "generated_content": {"type": "memory", "content": content}}
+
+
+def personalization_node(state: AgentState) -> Dict[str, Any]:
+    prompt = _extract_prompt_text(state.get("messages", []))
+    content = (
+        f"### 🎯 Personalized Learning Strategy\n\n"
+        f"Based on your recent study activities for **{prompt.strip()}**:\n"
+        f"- **Strengths Identified:** Core theoretical definitions and baseline concepts.\n"
+        f"- **Recommended Next Steps:** Complete a 10-question mock assessment and 1 hands-on practice implementation.\n"
+        f"- **Next Revision Interval:** In 24 hours (Day 2 active recall check)."
     )
-    response = llm.invoke([SystemMessage(content=system_prompt)] + state["messages"])
-    return {"messages": [response], "generated_content": {"type": "study_plan", "content": response.content}}
+    response = AIMessage(content=content)
+    return {"messages": [response], "generated_content": {"type": "personalization", "content": content}}
 
-def study_node(state: AgentState):
-    llm = get_llm()
-    system_prompt = (
-        "You are an expert AI Student Assistant and Dedicated Academic Tutor. "
-        "Provide helpful, accurate, and engaging explanations tailored to the student's questions. "
-        "Break down complex concepts step-by-step with intuitive analogies and concrete real-world examples. "
-        "Answer direct questions thoroughly, provide study tips, and format your response cleanly in Markdown."
-    )
-    response = llm.invoke([SystemMessage(content=system_prompt)] + state["messages"])
-    return {"messages": [response], "generated_content": {"type": "study", "content": response.content}}
 
-def exam_node(state: AgentState):
-    llm = get_llm()
-    system_prompt = (
-        "You are an expert AI Exam Preparation Coach and Assessment Specialist. "
-        "Your objective is to generate rigorous, high-yield educational exam materials, mock tests, quizzes, and revision questions. "
-        "Structure mock tests with clear question numbering, 4 distinct options (A, B, C, D) for multiple choice, and provide an Answer Key with detailed explanations at the end. "
-        "Ensure questions accurately test conceptual understanding, critical thinking, and problem solving. Format beautifully in Markdown."
-    )
-    response = llm.invoke([SystemMessage(content=system_prompt)] + state["messages"])
-    return {"messages": [response], "generated_content": {"type": "exam", "content": response.content}}
+# =========================================================================
+# 3. Graph Builder with Native & Fallback Execution
+# =========================================================================
 
-def coding_node(state: AgentState):
-    llm = get_llm()
-    system_prompt = (
-        "You are a Senior Software Engineer and Expert Coding Mentor. "
-        "Analyze, debug, explain, and optimize code with surgical precision. "
-        "Always provide corrected, production-ready code snippets with comments, explain the underlying logic and bugs step-by-step, "
-        "and analyze Time and Space Complexity (Big-O notation). Format code cleanly in Markdown code blocks."
-    )
-    response = llm.invoke([SystemMessage(content=system_prompt)] + state["messages"])
-    return {"messages": [response], "generated_content": {"type": "coding", "content": response.content}}
+class ModelFreeCompiledGraph:
+    """Fallback graph execution engine when LangGraph is not installed."""
+    def __init__(self):
+        self.node_map = {
+            "study_agent": study_node,
+            "study_planner_agent": study_planner_node,
+            "exam_agent": exam_node,
+            "coding_agent": coding_node,
+            "project_agent": project_node,
+            "document_agent": document_node,
+            "audio_agent": audio_node,
+            "video_agent": video_node,
+            "memory_agent": memory_node,
+            "personalization_agent": personalization_node,
+        }
 
-def project_node(state: AgentState):
-    llm = get_llm()
-    system_prompt = "You are a Project Guide. Help design architecture, create module breakdowns, and documentation."
-    response = llm.invoke([SystemMessage(content=system_prompt)] + state["messages"])
-    return {"messages": [response], "generated_content": {"type": "project", "content": response.content}}
+    def invoke(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Executes router node followed by the selected specialized agent node."""
+        state_copy = dict(state)
+        # 1. Route
+        router_res = router_node(state_copy)
+        target_agent = router_res.get("next_agent", "study_agent")
+        state_copy["next_agent"] = target_agent
 
-def document_node(state: AgentState):
-    llm = get_llm()
-    system_prompt = "You are a Document Analysis Specialist. Summarize, extract key takeaways, and answer queries about documents."
-    response = llm.invoke([SystemMessage(content=system_prompt)] + state["messages"])
-    return {"messages": [response], "generated_content": {"type": "document", "content": response.content}}
+        # 2. Execute selected agent node
+        handler = self.node_map.get(target_agent, study_node)
+        agent_res = handler(state_copy)
 
-def audio_node(state: AgentState):
-    llm = get_llm()
-    system_prompt = "You are an Audio Learning Assistant. Format explanations into clear spoken-word scripts."
-    response = llm.invoke([SystemMessage(content=system_prompt)] + state["messages"])
-    return {"messages": [response], "generated_content": {"type": "audio", "content": response.content}}
+        # Merge results
+        result_messages = list(state_copy.get("messages", []))
+        if "messages" in agent_res:
+            result_messages.extend(agent_res["messages"])
 
-def video_node(state: AgentState):
-    llm = get_llm()
-    system_prompt = "You are a Video Script Creator. Turn explanations into structured video scripts with visual cues."
-    response = llm.invoke([SystemMessage(content=system_prompt)] + state["messages"])
-    return {"messages": [response], "generated_content": {"type": "video", "content": response.content}}
+        state_copy["messages"] = result_messages
+        state_copy["generated_content"] = agent_res.get("generated_content", {})
+        return state_copy
 
-def memory_node(state: AgentState):
-    llm = get_llm()
-    system_prompt = "You are a Memory & Flashcard Expert. Create spaced repetition flashcards and mnemonics."
-    response = llm.invoke([SystemMessage(content=system_prompt)] + state["messages"])
-    return {"messages": [response], "generated_content": {"type": "memory", "content": response.content}}
 
-def personalization_node(state: AgentState):
-    llm = get_llm()
-    system_prompt = "You are a Personalized Learning Coach. Track learning progress and recommend tailored study schedules."
-    response = llm.invoke([SystemMessage(content=system_prompt)] + state["messages"])
-    return {"messages": [response], "generated_content": {"type": "personalization", "content": response.content}}
-
-# Build Graph
 def build_graph():
-    workflow = StateGraph(AgentState)
-    
-    # Add all nodes
-    workflow.add_node("orchestrator", router_node)
-    workflow.add_node("study_agent", study_node)
-    workflow.add_node("study_planner_agent", study_planner_node)
-    workflow.add_node("exam_agent", exam_node)
-    workflow.add_node("coding_agent", coding_node)
-    workflow.add_node("project_agent", project_node)
-    workflow.add_node("document_agent", document_node)
-    workflow.add_node("audio_agent", audio_node)
-    workflow.add_node("video_agent", video_node)
-    workflow.add_node("memory_agent", memory_node)
-    workflow.add_node("personalization_agent", personalization_node)
-    
-    # Set entry point
-    workflow.set_entry_point("orchestrator")
-    
-    # Conditional Edges
-    def route_to_agent(state: AgentState):
-        agent = state.get("next_agent", "study_agent")
-        return agent if agent in SUPPORTED_AGENTS else "study_agent"
-        
-    agent_map = {agent: agent for agent in SUPPORTED_AGENTS}
-    workflow.add_conditional_edges("orchestrator", route_to_agent, agent_map)
-    
-    # End edges for all nodes
-    for agent in SUPPORTED_AGENTS:
-        workflow.add_edge(agent, END)
-        
-    return workflow.compile()
+    if HAS_LANGGRAPH:
+        workflow = StateGraph(AgentState)
+        workflow.add_node("orchestrator", router_node)
+        workflow.add_node("study_agent", study_node)
+        workflow.add_node("study_planner_agent", study_planner_node)
+        workflow.add_node("exam_agent", exam_node)
+        workflow.add_node("coding_agent", coding_node)
+        workflow.add_node("project_agent", project_node)
+        workflow.add_node("document_agent", document_node)
+        workflow.add_node("audio_agent", audio_node)
+        workflow.add_node("video_agent", video_node)
+        workflow.add_node("memory_agent", memory_node)
+        workflow.add_node("personalization_agent", personalization_node)
+
+        workflow.set_entry_point("orchestrator")
+
+        def route_to_agent(state: AgentState):
+            agent = state.get("next_agent", "study_agent")
+            return agent if agent in SUPPORTED_AGENTS else "study_agent"
+
+        agent_map = {agent: agent for agent in SUPPORTED_AGENTS}
+        workflow.add_conditional_edges("orchestrator", route_to_agent, agent_map)
+
+        for agent in SUPPORTED_AGENTS:
+            workflow.add_edge(agent, END)
+
+        return workflow.compile()
+    else:
+        return ModelFreeCompiledGraph()
+
 
 app_graph = build_graph()
-

@@ -27,8 +27,15 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple, Callable
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance, ImageOps
-import cv2
+try:
+    from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance, ImageOps
+except ImportError:
+    Image = ImageDraw = ImageFont = ImageFilter = ImageEnhance = ImageOps = None
+
+try:
+    import cv2
+except ImportError:
+    cv2 = None
 
 from backend.core.moviepy_compat import (
     VideoFileClip,
@@ -63,7 +70,10 @@ safe_with_duration = set_clip_duration
 safe_with_position = set_clip_position
 safe_with_audio = set_clip_audio
 
-import imageio_ffmpeg
+try:
+    import imageio_ffmpeg
+except ImportError:
+    imageio_ffmpeg = None
 from backend.core.config import settings
 from backend.core import studio_db
 from backend.modules.audio_engine import AudioNarrationEngine

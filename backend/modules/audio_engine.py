@@ -2,7 +2,10 @@ import os
 import asyncio
 import logging
 import traceback
-import edge_tts
+try:
+    import edge_tts
+except ImportError:
+    edge_tts = None
 from pathlib import Path
 from typing import Dict, Any, Optional
 from backend.modules.translator import detect_language, validate_translation, UNICODE_RANGES

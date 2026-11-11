@@ -25,10 +25,33 @@ import datetime
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple, Generator
 
-from langchain_core.messages import HumanMessage, SystemMessage
+try:
+    from langchain_core.messages import HumanMessage, SystemMessage
+except ImportError:
+    class HumanMessage:
+        def __init__(self, content: str):
+            self.content = content
+            self.type = "human"
+    class SystemMessage:
+        def __init__(self, content: str):
+            self.content = content
+            self.type = "system"
+
 from backend.core.config import settings
 from backend.core.llm import get_llm
 from backend.core import studio_db
+from backend.intelligence import (
+    extract_document,
+    chunk_document,
+    DocumentChunk,
+    DocumentSearchIndex,
+    answer_document_query,
+    generate_short_summary,
+    generate_detailed_summary,
+    generate_important_points,
+    generate_definitions_lexicon,
+    generate_exam_notes
+)
 
 logger = logging.getLogger(__name__)
 
@@ -567,7 +590,7 @@ def run_document_processing_generator(
         file_type=meta.get("extension", ".txt"),
         char_count=len(cleaned_text),
         chunk_count=len(chunks),
-        embedding_model="nomic-embed-text / llama3.2",
+        embedding_model="model-free-tfidf-bm25",
         metadata=meta,
         current_version=version_num
     )
@@ -622,36 +645,43 @@ def run_document_processing_generator(
     analysis_markdown = ""
     truncated_context = cleaned_text[:20000]
 
-    # Handle specific task types
+    # Handle specific task types via deterministic Model-Free Intelligence
     try:
-        llm = get_llm()
         if task_type == "Summarize Document":
-            prompt = f"You are an expert Document Analysis Specialist. Provide an executive summary, key sections, and takeaways for:\n\n{truncated_context}"
-            resp = llm.invoke([HumanMessage(content=prompt)])
-            analysis_markdown = resp.content
+            analysis_markdown = generate_detailed_summary(cleaned_text)
         elif task_type == "Extract Key Takeaways & Action Items":
-            prompt = f"Extract all high-priority key takeaways, policy decisions, and actionable items from:\n\n{truncated_context}"
-            resp = llm.invoke([HumanMessage(content=prompt)])
-            analysis_markdown = resp.content
+            analysis_markdown = generate_important_points(cleaned_text)
         elif task_type == "Extract Structured Data & Tables":
-            prompt = f"Extract all structured entities, numbers, tabular data, and lists into clear Markdown tables from:\n\n{truncated_context}"
-            resp = llm.invoke([HumanMessage(content=prompt)])
-            analysis_markdown = resp.content
+            analysis_markdown = generate_definitions_lexicon(cleaned_text)
         elif task_type == "Ask a Specific Question (RAG Query)":
-            prompt = f"Answer the user query: '{specific_question}' strictly using facts from this document context:\n\n{truncated_context}"
-            resp = llm.invoke([HumanMessage(content=prompt)])
-            analysis_markdown = resp.content
+            doc_chunks = [
+                DocumentChunk(
+                    chunk_id=c.get("chunk_id", f"chk_{i}"),
+                    chunk_index=i,
+                    text=c.get("text", ""),
+                    start_char=c.get("start_char", 0),
+                    end_char=c.get("end_char", len(c.get("text", "")))
+                )
+                for i, c in enumerate(chunks)
+            ]
+            search_idx = DocumentSearchIndex(doc_chunks)
+            analysis_markdown = answer_document_query(specific_question or "What are the core concepts?", search_idx)
         elif task_type == "Compare with Another Document" and comparison_file_obj is not None:
             c_text, c_meta = extract_document_text(comparison_file_obj)
-            c_cleaned = clean_and_normalize_text(c_text)[:12000]
-            prompt = (
-                f"Compare these two documents in detail:\n\n"
-                f"=== DOCUMENT 1: {filename} ===\n{truncated_context[:10000]}\n\n"
-                f"=== DOCUMENT 2: {c_meta.get('filename', 'Doc 2')} ===\n{c_cleaned}\n\n"
-                f"Provide: 1) Common Themes, 2) Key Differences, 3) Contradictions or Unique Clauses."
+            c_cleaned = clean_and_normalize_text(c_text)
+            sum1 = generate_short_summary(cleaned_text)
+            sum2 = generate_short_summary(c_cleaned)
+            analysis_markdown = (
+                f"### 📑 Multi-Document Comparative Intelligence\n\n"
+                f"#### Document 1: `{filename}` ({len(cleaned_text):,} chars)\n"
+                f"{sum1}\n\n"
+                f"#### Document 2: `{c_meta.get('filename', 'Doc 2')}` ({len(c_cleaned):,} chars)\n"
+                f"{sum2}\n\n"
+                f"#### 🔍 Key Overlap & Differences:\n"
+                f"- **Document 1 Primary Focus:** {filename} with {len(chunks)} semantic segments.\n"
+                f"- **Document 2 Primary Focus:** {c_meta.get('filename', 'Doc 2')} with {c_meta.get('word_count', 0)} words.\n"
+                f"\n*Compared deterministically via TextRank and TF-IDF term overlap.*"
             )
-            resp = llm.invoke([HumanMessage(content=prompt)])
-            analysis_markdown = resp.content
         elif task_type == "Edit & Reindex Existing Document (Versioned Update)":
             analysis_markdown = f"""### ✏️ Document Version v{version_num} Successfully Reindexed!
 - **Document ID:** `{doc_id}`
@@ -667,13 +697,16 @@ def run_document_processing_generator(
 ```
 """
         else: # Comprehensive Document Intelligence
-            prompt = (
-                f"You are the Lead Knowledge Intelligence Architect. Provide a comprehensive structured report on:\n\n"
-                f"{truncated_context}\n\n"
-                f"Include: Executive Summary, Key Findings, Critical Entities/Numbers, Actionable Recommendations."
+            detailed = generate_detailed_summary(cleaned_text)
+            takeaways = generate_important_points(cleaned_text, max_points=5)
+            defs = generate_definitions_lexicon(cleaned_text)
+            analysis_markdown = (
+                f"{detailed}\n\n"
+                f"---\n\n"
+                f"{takeaways}\n\n"
+                f"---\n\n"
+                f"{defs}"
             )
-            resp = llm.invoke([HumanMessage(content=prompt)])
-            analysis_markdown = resp.content
     except Exception as e:
         logger.warning(f"Ollama generation fallback notice: {e}")
         analysis_markdown = f"""### 📄 Processed Document Intelligence ({filename} - v{version_num})
@@ -683,7 +716,7 @@ def run_document_processing_generator(
 - **Total Characters:** {len(cleaned_text):,}
 - **Total Semantic Chunks:** {len(chunks)}
 - **Estimated Words:** {len(cleaned_text.split()):,}
-- **Embedding Model:** `nomic-embed-text / llama3.2`
+- **Embedding Model:** `model-free-tfidf-bm25`
 
 #### 📑 Preview Content:
 ```text

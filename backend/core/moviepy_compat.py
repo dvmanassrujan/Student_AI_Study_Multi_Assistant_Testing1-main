@@ -64,19 +64,27 @@ if MOVIEPY_MAJOR == 1:
             ColorClip,
             VideoClip
         )
+elif MOVIEPY_MAJOR == 0:
+    VideoFileClip = AudioFileClip = CompositeVideoClip = concatenate_videoclips = ImageClip = ColorClip = VideoClip = None
 else:
     # MoviePy 2.x+
-    from moviepy import (
-        VideoFileClip,
-        AudioFileClip,
-        CompositeVideoClip,
-        concatenate_videoclips,
-        ImageClip,
-        ColorClip,
-        VideoClip
-    )
+    try:
+        from moviepy import (
+            VideoFileClip,
+            AudioFileClip,
+            CompositeVideoClip,
+            concatenate_videoclips,
+            ImageClip,
+            ColorClip,
+            VideoClip
+        )
+    except Exception:
+        VideoFileClip = AudioFileClip = CompositeVideoClip = concatenate_videoclips = ImageClip = ColorClip = VideoClip = None
 
-import imageio_ffmpeg
+try:
+    import imageio_ffmpeg
+except ImportError:
+    imageio_ffmpeg = None
 
 
 # =====================================================================
