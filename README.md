@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 ---
 title: Student AI Assistant
 emoji: 🎓
@@ -204,3 +205,6 @@ Open your browser to: **`http://localhost:7860`** (Navigate to **Tab 7: Document
 python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
 ```
 Open API docs at: **`http://localhost:8000/docs`**
+=======
+# Student_AI_Study_Multi_Assistant_Testing1-main
+>>>>>>> f0df8d240a8b405dcb9d3de2dd3c859993a2cd28
