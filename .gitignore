@@ -61,3 +61,11 @@ Thumbs.db
 *.webp
 *.docx
 
+# Gradio cache & local tokens
+.gradio/
+frontend/.gradio/
+public_url.txt
+ai-study-assistant/
+
+
+
