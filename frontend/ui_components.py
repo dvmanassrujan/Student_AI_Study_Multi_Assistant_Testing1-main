@@ -747,3 +747,4 @@ def render_workspace_header(title: str, subtitle: str, badge: str, accent_color:
       </span>
     </div>
     """
+
