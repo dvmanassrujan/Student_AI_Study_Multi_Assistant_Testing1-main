@@ -10,7 +10,10 @@ root_dir = Path(__file__).resolve().parent.parent
 if str(root_dir) not in sys.path:
     sys.path.insert(0, str(root_dir))
 
-import pytest
+try:
+    import pytest
+except ImportError:
+    pytest = None
 from backend.core import chat_history_db
 from backend.agents.orchestrator import app_graph, router_node
 from langchain_core.messages import HumanMessage

@@ -173,6 +173,7 @@ if os.environ.get("SPACE_ID") or os.environ.get("HF_SPACE") or sys.platform.star
 
 # Import the main Gradio Blocks app from frontend/app.py
 from frontend.app import demo
+from frontend.ui_components import NEURAL_NEXUS_CSS
 
 if __name__ == "__main__":
     from backend.core.port_utils import find_available_port, launch_with_port_fallback, get_process_on_port
@@ -193,7 +194,8 @@ if __name__ == "__main__":
         server_name="0.0.0.0",
         share=True,
         allowed_paths=[str(root_dir)],
-        prevent_thread_lock=True
+        prevent_thread_lock=True,
+        css=NEURAL_NEXUS_CSS
     )
     if share_url:
         with open("public_url.txt", "w", encoding="utf-8") as f:

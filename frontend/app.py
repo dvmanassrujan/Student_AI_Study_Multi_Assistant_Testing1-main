@@ -54,6 +54,15 @@ from backend.core import studio_db
 from backend.core.moviepy_compat import log_startup_diagnostics
 import pandas as pd
 import plotly.graph_objects as go
+from frontend.ui_components import (
+    NEURAL_NEXUS_CSS,
+    render_cinematic_hero,
+    render_six_ai_module_cards,
+    render_multi_agent_neural_visualization,
+    render_16_stage_pipeline_visualizer,
+    render_hackathon_demo_panel,
+    render_workspace_header
+)
 
 # Compatibility Shim: Gradio Windows frpc tunnel .exe extension
 try:
@@ -1643,23 +1652,42 @@ def cancel_active_studio_job_ui():
 # Gradio UI Construction (gr.Blocks)
 # ==========================================
 
-css = """
-footer {visibility: hidden;}
-.container {max-width: 1200px; margin: 0 auto;}
-"""
-
-with gr.Blocks(title="GenAI Video Intelligence Studio & Autonomous Production Platform") as demo:
+with gr.Blocks(
+    title="GenAI Video Intelligence Studio & Autonomous Production Platform",
+    css=NEURAL_NEXUS_CSS
+) as demo:
     from backend.core.config import settings
-    gr.Markdown("# 🎬 GenAI Video Intelligence Studio & Autonomous Production Platform")
-    gr.Markdown(f"### 🚀 Enterprise 16-Stage Autonomous Video Studio, YouTube Intelligence, Multilingual Dubbing & Educational Content Engine (Ollama {settings.MODEL_NAME})")
-    
+    _ollama_stat = check_ollama_connection()
+    _is_online = bool(_ollama_stat.get('connected'))
+    gr.HTML(render_cinematic_hero(settings.MODEL_NAME, is_online=_is_online))
     status_banner = gr.Markdown(value=get_ollama_status_markdown)
     
     with gr.Tabs():
         # ==============================================================
-        # AUTONOMOUS VIDEO STUDIO & PRODUCTION PLATFORM
+        # TAB 1: NEURAL NEXUS – AUTONOMOUS AI COMMAND CENTER (FLAGSHIP)
+        # ==============================================================
+        with gr.TabItem("🏠 Neural Nexus – AI Command Center"):
+            gr.HTML(render_workspace_header(
+                "Neural Nexus – Autonomous AI Command Center",
+                "Unified Orchestration, Multi-Agent Neural Telemetry, and 16-Stage Production Pipeline",
+                "HACKATHON FLAGSHIP",
+                "#00D9FF"
+            ))
+            gr.HTML(render_six_ai_module_cards())
+            gr.HTML(render_multi_agent_neural_visualization())
+            gr.HTML(render_16_stage_pipeline_visualizer())
+            gr.HTML(render_hackathon_demo_panel())
+
+        # ==============================================================
+        # TAB 2: AUTONOMOUS VIDEO STUDIO & PRODUCTION PLATFORM
         # ==============================================================
         with gr.TabItem("🎬 Autonomous Video Studio"):
+            gr.HTML(render_workspace_header(
+                "Autonomous Video Intelligence Studio",
+                "16-Stage autonomous editing, pause removal, multilingual captions, vertical shorts, and notes generation",
+                "AUTONOMOUS STUDIO",
+                "#00D9FF"
+            ))
             with gr.Tabs():
                 # SUB-TAB 1: 16-STAGE AUTONOMOUS VIDEO EDITOR
                 with gr.TabItem("🎬 16-Stage Autonomous Video Editor"):
@@ -1844,9 +1872,15 @@ with gr.Blocks(title="GenAI Video Intelligence Studio & Autonomous Production Pl
                     )
 
         # ==============================================================
-        # PRESERVED: YOUTUBE VIDEO INTELLIGENCE & ANALYTICS
+        # TAB 3: YOUTUBE VIDEO INTELLIGENCE & ANALYTICS
         # ==============================================================
         with gr.TabItem("📊 YouTube Intelligence & Analytics"):
+            gr.HTML(render_workspace_header(
+                "YouTube Intelligence & Sentiment Engine",
+                "Actionable audience insights, comment classification, retention metrics, and contextual video chat",
+                "INTELLIGENCE ENGINE",
+                "#8257FF"
+            ))
             gr.Markdown("## 📊 YouTube Video Intelligence & Audience Analytics")
             gr.Markdown("Analyze any YouTube video, extract speech analytics, classify audience comment sentiment, and receive AI-powered retention & growth recommendations.")
 
@@ -2107,28 +2141,16 @@ with gr.Blocks(title="GenAI Video Intelligence Studio & Autonomous Production Pl
                 outputs=[yt_chat_msg, yt_chatbot]
             )
 
-        # TAB 1: DASHBOARD
-        with gr.TabItem("🏠 Dashboard"):
-            gr.Markdown("## Welcome to your Personalized AI Learning Platform")
-            gr.Markdown("Select any of the tabs above to launch specialized multi-agent tools!")
-            
-            with gr.Row():
-                with gr.Column():
-                    gr.Markdown("### 📚 Study Planner\nGenerate daily & weekly tailored plans.")
-                with gr.Column():
-                    gr.Markdown("### 📝 Exam Prep\nTake mock tests, quizzes, and important question sets.")
-                with gr.Column():
-                    gr.Markdown("### 💻 Coding Lab\nDebug code, optimize solutions, and learn DSA.")
-            with gr.Row():
-                with gr.Column():
-                    gr.Markdown("### 🏗️ Project Architect\nGenerate step-by-step guides and database schemas.")
-                with gr.Column():
-                    gr.Markdown("### 📄 Document Analyzer\nSummarize and query large documents.")
-                with gr.Column():
-                    gr.Markdown("### 🎬 3D Cartoon Studio\nGenerate animated explainer videos in 30+ languages.")
-                    
-        # TAB 2: AI CHAT ASSISTANT
+        # ==============================================================
+        # TAB 4: AI CHAT & MULTIMODAL LAB
+        # ==============================================================
         with gr.TabItem("💬 AI Chat Assistant"):
+            gr.HTML(render_workspace_header(
+                "AI Chat & Multimodal Lab",
+                "Persistent conversational intelligence, document reasoning, AI image/video generation, and agent routing",
+                "MULTIMODAL CORE",
+                "#00D9FF"
+            ))
             gr.Markdown("## 💬 Persistent AI Multi-Modal Chatbot & Media Studio")
             
             with gr.Row():
@@ -2223,8 +2245,16 @@ with gr.Blocks(title="GenAI Video Intelligence Studio & Autonomous Production Pl
                 outputs=[chatbot, current_session_id, session_selector, gen_ref_image, file_upload, image_upload, download_output]
             )
 
-        # TAB 3: STUDY PLANNER
+        # ==============================================================
+        # TAB 5: STUDY PLANNER AGENT
+        # ==============================================================
         with gr.TabItem("📅 Study Planner"):
+            gr.HTML(render_workspace_header(
+                "Autonomous Study Planner Agent",
+                "Personalized daily and weekly milestone schedules with adaptive study pacing",
+                "PLANNER AGENT",
+                "#8257FF"
+            ))
             gr.Markdown("## 📅 AI Study Planner")
             gr.Markdown("Create a personalized, AI-generated study schedule tailored to your goals and time constraints.")
             
@@ -2247,8 +2277,16 @@ with gr.Blocks(title="GenAI Video Intelligence Studio & Autonomous Production Pl
                 outputs=[sp_output, sp_download]
             )
 
-        # TAB 4: EXAM PREPARATION
+        # ==============================================================
+        # TAB 6: EXAM PREPARATION & TESTING
+        # ==============================================================
         with gr.TabItem("📝 Exam Preparation"):
+            gr.HTML(render_workspace_header(
+                "Exam Preparation & Adaptive Testing",
+                "Multi-tier question generation, timed mock exams, interactive quizzes, and flashcards",
+                "EXAM ENGINE",
+                "#386BFF"
+            ))
             gr.Markdown("## 📝 AI Exam Preparation & Mock Tests")
             
             with gr.Row():
@@ -2270,8 +2308,16 @@ with gr.Blocks(title="GenAI Video Intelligence Studio & Autonomous Production Pl
                 outputs=[ep_output, ep_download]
             )
 
-        # TAB 5: CODING LAB
+        # ==============================================================
+        # TAB 7: CODING LAB & DSA MENTOR
+        # ==============================================================
         with gr.TabItem("💻 Coding Lab"):
+            gr.HTML(render_workspace_header(
+                "Coding Mentor & DSA Lab",
+                "Algorithm debugging, code optimization, complexity analysis, and technical interview guidance",
+                "DEVELOPER AGENT",
+                "#00D9FF"
+            ))
             gr.Markdown("## 💻 AI Coding Lab & Mentor")
             
             cl_mode = gr.Radio(label="What do you want to do?", choices=["Debug Code", "Explain Code", "Optimize Code", "Learn a Topic (e.g., DSA)"], value="Debug Code")
@@ -2290,8 +2336,16 @@ with gr.Blocks(title="GenAI Video Intelligence Studio & Autonomous Production Pl
                 outputs=[cl_output, cl_download]
             )
 
-        # TAB 6: PROJECT BUILDER
+        # ==============================================================
+        # TAB 8: PROJECT BUILDER & ARCHITECT
+        # ==============================================================
         with gr.TabItem("🏗️ Project Builder"):
+            gr.HTML(render_workspace_header(
+                "Project Architect & System Designer",
+                "Full-stack project scaffolding, database schemas, API specs, and implementation roadmaps",
+                "SYSTEM ARCHITECT",
+                "#D65CFF"
+            ))
             gr.Markdown("## 🏗️ AI Project Builder & Architect")
             
             pb_idea = gr.Textbox(label="Project Idea / Description", placeholder="e.g., A real-time chat app, E-commerce platform")
@@ -2317,8 +2371,16 @@ with gr.Blocks(title="GenAI Video Intelligence Studio & Autonomous Production Pl
                 outputs=[pb_output, pb_download]
             )
 
-        # TAB 7: DOCUMENT INTELLIGENCE & REAL-TIME PROGRESS MONITOR
+        # ==============================================================
+        # TAB 9: DOCUMENT INTELLIGENCE & REAL-TIME MONITOR
+        # ==============================================================
         with gr.TabItem("📄 Document Intelligence & Monitor"):
+            gr.HTML(render_workspace_header(
+                "Document Intelligence & Semantic Extraction",
+                "Multi-document synthesis, semantic search, key insights extraction, and automated summaries",
+                "SEMANTIC AGENT",
+                "#8257FF"
+            ))
             gr.Markdown("## 📄 Enterprise Document Intelligence & Real-Time Progress Monitor")
             gr.Markdown("Upload, edit, chunk, generate dense embeddings, and analyze enterprise documents across 8 real-time stages with persistent progress tracking, versioning, and cancellation.")
 
@@ -2413,8 +2475,16 @@ with gr.Blocks(title="GenAI Video Intelligence Studio & Autonomous Production Pl
                 outputs=[doc_queue_table]
             )
 
-        # TAB 8: AUDIO STUDIO
+        # ==============================================================
+        # TAB 10: MULTILINGUAL AUDIO LEARNING
+        # ==============================================================
         with gr.TabItem("🎧 Audio Learning"):
+            gr.HTML(render_workspace_header(
+                "Multilingual Audio Learning Engine",
+                "Neural text-to-speech, educational audio lessons, and multilingual voice generation",
+                "AUDIO SYNTHESIS",
+                "#00D9FF"
+            ))
             gr.Markdown("## 🎧 Audio Learning System")
             gr.Markdown("Convert any text, summary, or note into spoken audio using Edge-TTS.")
             
@@ -2430,8 +2500,16 @@ with gr.Blocks(title="GenAI Video Intelligence Studio & Autonomous Production Pl
                 outputs=[aud_player, aud_file, aud_status]
             )
 
-        # TAB 9: 3D CARTOON VIDEO STUDIO
-        with gr.TabItem("🎬 3D Video Studio"):
+        # ==============================================================
+        # TAB 11: PROFESSOR ROBOCAT 3D STUDIO
+        # ==============================================================
+        with gr.TabItem("🎬 Professor Robocat 3D Studio"):
+            gr.HTML(render_workspace_header(
+                "Professor RoboCat 3D Studio",
+                "Animated 3D educational explainers with synchronized multilingual narration in 30+ languages",
+                "3D ANIMATION",
+                "#D65CFF"
+            ))
             gr.Markdown("## 🎬 3D Multilingual Educational Cartoon Studio")
             gr.Markdown("### Featuring **Professor RoboCat** — Friendly Blue Robotic Cat Teacher 🤖🐾")
             
@@ -2499,5 +2577,6 @@ if __name__ == "__main__":
         server_name="0.0.0.0",
         share=share_enabled,
         allowed_paths=[str(root_dir)],
-        prevent_thread_lock=False
+        prevent_thread_lock=False,
+        css=NEURAL_NEXUS_CSS
     )
