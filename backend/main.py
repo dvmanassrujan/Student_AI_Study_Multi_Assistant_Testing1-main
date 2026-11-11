@@ -48,6 +48,27 @@ class DocumentReindexRequest(BaseModel):
         description="Reindexing operation task type"
     )
 
+class ExamPrepApiRequest(BaseModel):
+    topic: str = Field(..., description="Subject or topic for exam material")
+    prep_type: Optional[str] = Field("Mock Test (Multiple Choice)", description="Type of material to generate")
+    difficulty: Optional[str] = Field("Intermediate", description="Difficulty level")
+    num_questions: Optional[int] = Field(10, description="Number of questions or items")
+    additional_context: Optional[str] = Field("", description="Optional syllabus details or focus areas")
+
+class StudyPlanApiRequest(BaseModel):
+    topic: str = Field(..., description="Subject or topic for study plan")
+    level: Optional[str] = Field("Beginner", description="Current knowledge level")
+    duration: Optional[str] = Field("1 Week", description="Total timeline duration")
+    hours_per_day: Optional[float] = Field(2.0, description="Available study hours per day")
+    goals: Optional[str] = Field("", description="Specific goals or focus areas")
+
+class CodingLabApiRequest(BaseModel):
+    mode: Optional[str] = Field("Debug Code", description="Operation mode: Debug Code, Explain Code, Optimize Code, Learn a Topic (e.g., DSA)")
+    language: Optional[str] = Field("Python", description="Target programming language")
+    code_snippet: Optional[str] = Field("", description="Source code snippet to analyze")
+    error_msg: Optional[str] = Field("", description="Optional error message or traceback")
+    dsa_topic: Optional[str] = Field("", description="Topic to learn when in DSA mode")
+
 
 # =========================================================================
 # Background Job Execution Runner
@@ -226,6 +247,127 @@ async def stream_job_events(job_id: str):
             await asyncio.sleep(0.5)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+# =========================================================================
+# AI Multi-Study Assistant Specialized Agent Endpoints
+# =========================================================================
+
+@app.post("/api/agents/exam-prep")
+def generate_exam_prep_endpoint(req: ExamPrepApiRequest):
+    """Generates mock tests, quizzes, and revision questions via the Exam Coach Agent."""
+    from backend.agents.orchestrator import app_graph
+    from langchain_core.messages import HumanMessage
+    
+    clean_topic = req.topic.strip()
+    if not clean_topic:
+        raise HTTPException(status_code=400, detail="Topic cannot be empty.")
+    
+    safe_q = max(1, min(50, req.num_questions or 10))
+    prompt = (
+        f"Act as an expert AI Exam Coach. Generate a '{req.prep_type}' for the topic: '{clean_topic}'.\n"
+        f"- Difficulty Level: {req.difficulty}\n"
+        f"- Quantity: {safe_q} questions/items\n"
+        f"- Additional Context: {req.additional_context if req.additional_context else 'None'}\n\n"
+        "If generating a test or quiz, provide clearly numbered questions with options first, and include the comprehensive Answer Key and explanations at the end. Format beautifully in Markdown."
+    )
+    try:
+        inputs = {"messages": [HumanMessage(content=prompt)], "next_agent": "exam_agent", "task_type": "exam"}
+        res = app_graph.invoke(inputs)
+        return {
+            "agent": "exam_agent",
+            "topic": clean_topic,
+            "prep_type": req.prep_type,
+            "content": res["messages"][-1].content
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Exam Agent execution error: {str(e)}")
+
+@app.post("/api/agents/study-planner")
+def generate_study_plan_endpoint(req: StudyPlanApiRequest):
+    """Generates personalized study timetables and milestones via the Study Planner Agent."""
+    from backend.agents.orchestrator import app_graph
+    from langchain_core.messages import HumanMessage
+    
+    clean_topic = req.topic.strip()
+    if not clean_topic:
+        raise HTTPException(status_code=400, detail="Topic cannot be empty.")
+    
+    safe_hours = max(1, min(24, int(req.hours_per_day or 2)))
+    prompt = (
+        f"Act as an expert AI Study Planner. Create a detailed, highly structured {req.duration} study plan for the topic: '{clean_topic}'.\n"
+        f"- Current Level: {req.level}\n"
+        f"- Time Commitment: {safe_hours} hours per day\n"
+        f"- Specific Goals: {req.goals if req.goals else 'Understand core concepts thoroughly and build a solid foundation.'}\n\n"
+        "Please provide a day-by-day (or week-by-week) breakdown. Include specific topics, suggested study techniques, actionable milestones, and revision checkpoints. Format beautifully in Markdown."
+    )
+    try:
+        inputs = {"messages": [HumanMessage(content=prompt)], "next_agent": "study_planner_agent", "task_type": "study_planner"}
+        res = app_graph.invoke(inputs)
+        return {
+            "agent": "study_planner_agent",
+            "topic": clean_topic,
+            "duration": req.duration,
+            "content": res["messages"][-1].content
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Study Planner Agent execution error: {str(e)}")
+
+@app.post("/api/agents/coding-lab")
+def run_coding_lab_endpoint(req: CodingLabApiRequest):
+    """Executes debugging, code explanation, optimization, or DSA coaching via the Senior Coding Mentor."""
+    from backend.agents.orchestrator import app_graph
+    from langchain_core.messages import HumanMessage
+    
+    safe_mode = req.mode or "Debug Code"
+    safe_lang = req.language or "Python"
+    safe_code = (req.code_snippet or "").strip()
+    safe_dsa = (req.dsa_topic or "").strip()
+    
+    if safe_mode in ["Debug Code", "Explain Code", "Optimize Code"] and not safe_code:
+        raise HTTPException(status_code=400, detail="Code snippet is required for this operation.")
+    if safe_mode == "Learn a Topic (e.g., DSA)" and not safe_dsa:
+        raise HTTPException(status_code=400, detail="DSA topic is required.")
+        
+    if safe_mode == "Debug Code":
+        err_ctx = f"Error/Issue: {req.error_msg}" if req.error_msg else "Identify and fix all logic, runtime, or syntax bugs."
+        prompt = (
+            f"Act as a Senior Coding Mentor. Debug this {safe_lang} code:\n\n"
+            f"```{safe_lang}\n{safe_code}\n```\n\n"
+            f"{err_ctx}\n\n"
+            "Explain the bug clearly step-by-step, provide the fully corrected, production-ready code with helpful comments, and provide Time/Space complexity."
+        )
+    elif safe_mode == "Explain Code":
+        prompt = (
+            f"Act as a Senior Coding Mentor. Explain this {safe_lang} code step-by-step:\n\n"
+            f"```{safe_lang}\n{safe_code}\n```\n\n"
+            "Break down what each section does, explain edge cases, and analyze Big-O Time and Space Complexity."
+        )
+    elif safe_mode == "Optimize Code":
+        prompt = (
+            f"Act as a Senior Coding Mentor. Optimize this {safe_lang} code for high performance and readability:\n\n"
+            f"```{safe_lang}\n{safe_code}\n```\n\n"
+            "Provide the optimized code, explain the algorithmic improvements made, and compare before/after Time and Space Complexity."
+        )
+    else:
+        prompt = (
+            f"Act as a Senior Coding Mentor. Teach '{safe_dsa}' in {safe_lang} with clear conceptual explanations, real-world analogies, "
+            f"step-by-step algorithmic breakdown, practical runnable code implementation, and Time/Space complexity analysis."
+        )
+        if safe_code:
+            prompt += f"\n\nStudent Reference Code:\n```{safe_lang}\n{safe_code}\n```"
+
+    try:
+        inputs = {"messages": [HumanMessage(content=prompt)], "next_agent": "coding_agent", "task_type": "coding"}
+        res = app_graph.invoke(inputs)
+        return {
+            "agent": "coding_agent",
+            "mode": safe_mode,
+            "language": safe_lang,
+            "content": res["messages"][-1].content
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Coding Lab execution error: {str(e)}")
 
 
 if __name__ == "__main__":

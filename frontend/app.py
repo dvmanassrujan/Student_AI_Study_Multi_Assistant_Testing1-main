@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 import uuid
 import html
 import shutil
@@ -53,6 +54,18 @@ from backend.core import studio_db
 from backend.core.moviepy_compat import log_startup_diagnostics
 import pandas as pd
 import plotly.graph_objects as go
+
+# Compatibility Shim: Gradio Windows frpc tunnel .exe extension
+try:
+    import gradio.tunneling
+    if os.name == "nt" and not gradio.tunneling.BINARY_PATH.endswith(".exe"):
+        old_bin = gradio.tunneling.BINARY_PATH
+        new_bin = old_bin + ".exe"
+        if os.path.exists(old_bin) and not os.path.exists(new_bin):
+            shutil.copy2(old_bin, new_bin)
+        gradio.tunneling.BINARY_PATH = new_bin
+except Exception:
+    pass
 
 # Log media processing environment & MoviePy diagnostics
 log_startup_diagnostics()
@@ -229,15 +242,16 @@ def update_mode_ui(mode: str) -> tuple:
         return gr.update(visible=False, value=None), gr.update(placeholder="Ask me anything or attach files/images...")
 
 
-def chat_respond(user_message: str, chat_history: list, session_id: str, chatbot_mode: str = "💬 Chat", gen_ref_image=None, uploaded_files=None, uploaded_images=None) -> tuple:
-    """Handles multi-turn conversation, Text->Image, Image->Image, Text->Video, and Image->Video generation with persistence via SQLite."""
+def chat_respond(user_message: str, chat_history: list, session_id: str, chatbot_mode: str = "💬 Chat", gen_ref_image=None, uploaded_files=None, uploaded_images=None):
+    """Handles multi-turn conversation, Text->Image, Image->Image, Text->Video, and Image->Video generation with persistence via SQLite and instant responsive streaming."""
     prompt_context, display_markdown = process_chat_attachments(uploaded_files, uploaded_images)
     full_user_text = user_message.strip() if user_message else ""
     
     if not full_user_text and not display_markdown and not gen_ref_image:
         current_msgs = chat_history_db.get_session_messages(session_id) if session_id and session_id != "new" else []
         choices = get_session_choices()
-        return "", current_msgs, session_id, gr.update(choices=choices, value=session_id), None, None, None, None
+        yield "", current_msgs, session_id, gr.update(choices=choices, value=session_id), None, None, None, None
+        return
 
     # Ensure a valid session exists
     if not session_id or session_id == "new":
@@ -245,9 +259,44 @@ def chat_respond(user_message: str, chat_history: list, session_id: str, chatbot
         title = f"[{chatbot_mode}] " + title_source[:30] + ("..." if len(title_source) > 30 else "")
         session_id = chat_history_db.create_session(title=title)
 
+    choices = get_session_choices()
     gen_dir = root_dir / "temp" / "generated_media"
     gen_dir.mkdir(parents=True, exist_ok=True)
     generated_media_path = None
+
+    # Determine display user message up front
+    if chatbot_mode == "🖼️ Text → Image":
+        user_prompt = full_user_text or "Educational Illustration"
+        saved_user_message = f"🖼️ **[Text → Image Prompt]**: {user_prompt}"
+        thinking_text = "*(Generating visual illustration...)*"
+    elif chatbot_mode == "🖼️ Image → Image":
+        user_prompt = full_user_text or "Enhanced Image Transformation"
+        saved_user_message = f"🖼️ **[Image → Image Prompt]**: {user_prompt}"
+        thinking_text = "*(Applying neural image transformation...)*"
+    elif chatbot_mode == "🎬 Text → Video":
+        user_prompt = full_user_text or "Educational Explainer Video"
+        saved_user_message = f"🎬 **[Text → Video Prompt]**: {user_prompt}"
+        thinking_text = "*(Producing animated video scenes & narration...)*"
+    elif chatbot_mode == "🎬 Image → Video":
+        user_prompt = full_user_text or "Educational Image Animation & Narration"
+        saved_user_message = f"🎬 **[Image → Video Prompt]**: {user_prompt}"
+        thinking_text = "*(Rendering video from image keyframe...)*"
+    else:
+        display_content_parts = []
+        if display_markdown:
+            display_content_parts.append(display_markdown)
+        if full_user_text:
+            display_content_parts.append(full_user_text)
+        saved_user_message = "\n\n".join(display_content_parts)
+        thinking_text = "*(Thinking...)*"
+
+    # Step 1: Immediately yield user message + thinking bubble (<50ms response) so user sees instant feedback
+    existing_msgs = chat_history_db.get_session_messages(session_id) if session_id and session_id != "new" else []
+    pending_history = list(existing_msgs) + [
+        {"role": "user", "content": saved_user_message},
+        {"role": "assistant", "content": thinking_text}
+    ]
+    yield "", pending_history, session_id, gr.update(choices=choices, value=session_id), None, None, None, gr.update(value=None, visible=False)
 
     # -------------------------------------------------------------
     # MODE 1: TEXT -> IMAGE (PNG Format)
@@ -431,14 +480,6 @@ def chat_respond(user_message: str, chat_history: list, session_id: str, chatbot
     # MODE 5: CHAT (DEFAULT)
     # -------------------------------------------------------------
     else:
-        # Construct displayed user message content for UI & DB history
-        display_content_parts = []
-        if display_markdown:
-            display_content_parts.append(display_markdown)
-        if full_user_text:
-            display_content_parts.append(full_user_text)
-        saved_user_message = "\n\n".join(display_content_parts)
-
         # Construct prompt message for LangGraph AI agent
         agent_prompt_parts = []
         if prompt_context:
@@ -447,12 +488,15 @@ def chat_respond(user_message: str, chat_history: list, session_id: str, chatbot
             agent_prompt_parts.append(full_user_text)
         prompt_for_agent = "\n\n".join(agent_prompt_parts)
 
-        # Reconstruct past messages from DB for context
-        past_db_messages = chat_history_db.get_session_messages(session_id)
+        # Reconstruct past messages from DB for context (keep recent turns to prevent context bloat)
+        past_db_messages = chat_history_db.get_session_messages(session_id)[-8:]
         messages = []
         for item in past_db_messages:
             role = item.get("role")
             content = item.get("content", "")
+            # Filter out complex HTML or media blocks from previous agent outputs
+            if "<div" in content or "<img" in content or "<video" in content or "data:image" in content:
+                continue
             if role == "user":
                 messages.append(HumanMessage(content=content))
             elif role == "assistant":
@@ -464,7 +508,8 @@ def chat_respond(user_message: str, chat_history: list, session_id: str, chatbot
         try:
             inputs = {"messages": messages}
             result = app_graph.invoke(inputs)
-            assistant_response = result['messages'][-1].content
+            raw_res = result['messages'][-1].content
+            assistant_response = raw_res if isinstance(raw_res, str) else str(raw_res)
         except Exception as e:
             from backend.core.config import settings
             assistant_response = f"❌ Error executing AI Agent: {e}\n\nPlease ensure Ollama is running (`ollama serve`) and `{settings.MODEL_NAME}` is pulled."
@@ -477,7 +522,7 @@ def chat_respond(user_message: str, chat_history: list, session_id: str, chatbot
     updated_history = chat_history_db.get_session_messages(session_id)
     choices = get_session_choices()
 
-    return "", updated_history, session_id, gr.update(choices=choices, value=session_id), None, None, None, gr.update(value=generated_media_path, visible=bool(generated_media_path))
+    yield "", updated_history, session_id, gr.update(choices=choices, value=session_id), None, None, None, gr.update(value=generated_media_path, visible=bool(generated_media_path))
 
 
 def select_session(session_id: str) -> tuple:
@@ -518,77 +563,140 @@ def delete_all_chat_history() -> tuple:
 
 
 def generate_study_plan(topic: str, level: str, duration: str, hours_per_day: float, goals: str) -> tuple:
-    if not topic.strip():
+    if not (topic or "").strip():
         return "⚠️ Please enter a subject or topic to generate a study plan.", None
     
+    clean_topic = topic.strip()
+    safe_level = (level or "Beginner").strip()
+    safe_duration = (duration or "1 Week").strip()
+    try:
+        safe_hours = max(1, min(24, int(hours_per_day or 2)))
+    except (TypeError, ValueError):
+        safe_hours = 2
+    safe_goals = (goals or "").strip()
+    
     prompt = (
-        f"Act as an expert AI Study Planner. Create a detailed, highly structured {duration} study plan for the topic: '{topic}'.\n"
-        f"- Current Level: {level}\n"
-        f"- Time Commitment: {int(hours_per_day)} hours per day\n"
-        f"- Specific Goals: {goals if goals.strip() else 'Understand core concepts thoroughly and build a solid foundation.'}\n\n"
-        "Please provide a day-by-day (or week-by-week) breakdown. Include specific topics, suggested study techniques, and clear milestones. Format beautifully in Markdown."
+        f"Act as an expert AI Study Planner. Create a detailed, highly structured {safe_duration} study plan for the topic: '{clean_topic}'.\n"
+        f"- Current Level: {safe_level}\n"
+        f"- Time Commitment: {safe_hours} hours per day\n"
+        f"- Specific Goals: {safe_goals if safe_goals else 'Understand core concepts thoroughly and build a solid foundation.'}\n\n"
+        "Please provide a day-by-day (or week-by-week) breakdown. Include specific topics, suggested study techniques, actionable milestones, and revision checkpoints. Format beautifully in Markdown."
     )
     
     try:
-        inputs = {"messages": [HumanMessage(content=prompt)]}
+        inputs = {
+            "messages": [HumanMessage(content=prompt)],
+            "next_agent": "study_planner_agent",
+            "task_type": "study_planner"
+        }
         result = app_graph.invoke(inputs)
         content = result['messages'][-1].content
         
-        file_slug = topic.replace(" ", "_").lower()
-        file_path = save_temp_file(content, f"{file_slug}_study_plan.md")
+        raw_slug = re.sub(r'[^a-zA-Z0-9_\-]', '_', clean_topic.replace(" ", "_").lower())
+        file_slug = f"{raw_slug[:40]}_study_plan"
+        file_path = save_temp_file(content, f"{file_slug}.md")
         return content, file_path
     except Exception as e:
+        logger.error(f"Error generating study plan: {e}", exc_info=True)
         return f"❌ Error generating study plan: {e}", None
 
 
 def generate_exam_material(topic: str, prep_type: str, difficulty: str, num_questions: float, additional_context: str) -> tuple:
-    if not topic.strip():
+    if not (topic or "").strip():
         return "⚠️ Please enter a subject or topic to proceed.", None
     
+    clean_topic = topic.strip()
+    safe_prep_type = (prep_type or "Mock Test (Multiple Choice)").strip()
+    safe_difficulty = (difficulty or "Intermediate").strip()
+    try:
+        safe_num_q = max(1, min(50, int(num_questions or 10)))
+    except (TypeError, ValueError):
+        safe_num_q = 10
+    safe_context = (additional_context or "").strip()
+    
     prompt = (
-        f"Act as an expert AI Exam Coach. Generate a '{prep_type}' for the topic: '{topic}'.\n"
-        f"- Difficulty Level: {difficulty}\n"
-        f"- Quantity: {int(num_questions)} questions/items\n"
-        f"- Additional Context: {additional_context if additional_context.strip() else 'None'}\n\n"
-        "If generating a test or quiz, provide questions first and include the answer key at the end. Format beautifully in Markdown."
+        f"Act as an expert AI Exam Coach. Generate a '{safe_prep_type}' for the topic: '{clean_topic}'.\n"
+        f"- Difficulty Level: {safe_difficulty}\n"
+        f"- Quantity: {safe_num_q} questions/items\n"
+        f"- Additional Context: {safe_context if safe_context else 'None'}\n\n"
+        "If generating a test or quiz, provide clearly numbered questions with options first, and include the comprehensive Answer Key and explanations at the end. Format beautifully in Markdown."
     )
     
     try:
-        inputs = {"messages": [HumanMessage(content=prompt)]}
+        inputs = {
+            "messages": [HumanMessage(content=prompt)],
+            "next_agent": "exam_agent",
+            "task_type": "exam"
+        }
         result = app_graph.invoke(inputs)
         content = result['messages'][-1].content
         
-        file_slug = f"{topic.replace(' ', '_').lower()}_{prep_type.replace(' ', '_').lower()}"
+        raw_topic_slug = re.sub(r'[^a-zA-Z0-9_\-]', '_', clean_topic.replace(" ", "_").lower())
+        raw_prep_slug = re.sub(r'[^a-zA-Z0-9_\-]', '_', safe_prep_type.replace(" ", "_").lower())
+        file_slug = f"{raw_topic_slug[:30]}_{raw_prep_slug[:30]}"
         file_path = save_temp_file(content, f"{file_slug}.md")
         return content, file_path
     except Exception as e:
+        logger.error(f"Error generating exam material: {e}", exc_info=True)
         return f"❌ Error generating exam material: {e}", None
 
 
 def run_coding_lab(mode: str, language: str, code_snippet: str, error_msg: str, dsa_topic: str) -> tuple:
-    if mode in ["Debug Code", "Explain Code", "Optimize Code"] and not code_snippet.strip():
+    safe_mode = (mode or "Debug Code").strip()
+    safe_lang = (language or "Python").strip()
+    safe_code = (code_snippet or "").strip()
+    safe_error = (error_msg or "").strip()
+    safe_dsa = (dsa_topic or "").strip()
+
+    if safe_mode in ["Debug Code", "Explain Code", "Optimize Code"] and not safe_code:
         return "⚠️ Please paste some code to proceed.", None
-    if mode == "Learn a Topic (e.g., DSA)" and not dsa_topic.strip():
+    if safe_mode == "Learn a Topic (e.g., DSA)" and not safe_dsa:
         return "⚠️ Please enter a topic to learn.", None
         
-    if mode == "Debug Code":
-        prompt = f"Act as a Senior Coding Mentor. Debug this {language} code:\n\n```{language}\n{code_snippet}\n```\n\nError/Issue: {error_msg}\n\nExplain the bug and provide corrected code."
-    elif mode == "Explain Code":
-        prompt = f"Act as a Senior Coding Mentor. Explain this {language} code step-by-step:\n\n```{language}\n{code_snippet}\n```"
-    elif mode == "Optimize Code":
-        prompt = f"Act as a Senior Coding Mentor. Optimize this {language} code for performance and readability:\n\n```{language}\n{code_snippet}\n```"
+    if safe_mode == "Debug Code":
+        err_ctx = f"Error/Issue: {safe_error}" if safe_error else "Identify and fix all logic, runtime, or syntax bugs."
+        prompt = (
+            f"Act as a Senior Coding Mentor. Debug this {safe_lang} code:\n\n"
+            f"```{safe_lang}\n{safe_code}\n```\n\n"
+            f"{err_ctx}\n\n"
+            "Explain the bug clearly step-by-step, provide the fully corrected, production-ready code with helpful comments, "
+            "and provide the time and space complexity."
+        )
+    elif safe_mode == "Explain Code":
+        prompt = (
+            f"Act as a Senior Coding Mentor. Explain this {safe_lang} code step-by-step:\n\n"
+            f"```{safe_lang}\n{safe_code}\n```\n\n"
+            "Break down what each section does, explain edge cases, and analyze the Big-O Time and Space Complexity."
+        )
+    elif safe_mode == "Optimize Code":
+        prompt = (
+            f"Act as a Senior Coding Mentor. Optimize this {safe_lang} code for high performance and readability:\n\n"
+            f"```{safe_lang}\n{safe_code}\n```\n\n"
+            "Provide the optimized code, explain the algorithmic improvements made, and compare before/after Time and Space Complexity."
+        )
     else:
-        prompt = f"Act as a Senior Coding Mentor. Teach '{dsa_topic}' in {language} with explanations, analogies, and practical code."
+        prompt = (
+            f"Act as a Senior Coding Mentor. Teach '{safe_dsa}' in {safe_lang} with clear conceptual explanations, real-world analogies, "
+            f"step-by-step algorithmic breakdown, practical runnable code implementation, and Time/Space complexity analysis."
+        )
+        if safe_code:
+            prompt += f"\n\nStudent Reference Code:\n```{safe_lang}\n{safe_code}\n```"
         
     try:
-        inputs = {"messages": [HumanMessage(content=prompt)]}
+        inputs = {
+            "messages": [HumanMessage(content=prompt)],
+            "next_agent": "coding_agent",
+            "task_type": "coding"
+        }
         result = app_graph.invoke(inputs)
         content = result['messages'][-1].content
         
-        file_slug = f"coding_lab_{mode.replace(' ', '_').lower()}"
+        safe_mode_slug = re.sub(r'[^a-zA-Z0-9_\-]', '_', safe_mode.replace(' ', '_').lower())
+        file_slug = f"coding_lab_{safe_mode_slug[:40]}"
         file_path = save_temp_file(content, f"{file_slug}.md")
         return content, file_path
     except Exception as e:
+        logger.error(f"Error during coding analysis: {e}", exc_info=True)
         return f"❌ Error during coding analysis: {e}", None
 
 
@@ -2371,6 +2479,25 @@ with gr.Blocks(title="GenAI Video Intelligence Studio & Autonomous Production Pl
                 outputs=[vid_player, vid_audio, vid_srt, vid_status]
             )
 
+
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 7860))
-    demo.launch(server_name="0.0.0.0", server_port=port, allowed_paths=[str(root_dir)])
+    from backend.core.port_utils import find_available_port, launch_with_port_fallback
+    
+    preferred_port = int(os.environ.get("PORT", 7860))
+    fallback_port = int(os.environ.get("FALLBACK_PORT", 7861))
+    share_enabled = os.environ.get("GRADIO_SHARE", "true").lower() in ("true", "1")
+    
+    assigned_port, _ = find_available_port(
+        preferred_port=preferred_port,
+        fallback_port=fallback_port
+    )
+    
+    launch_with_port_fallback(
+        demo,
+        preferred_port=assigned_port,
+        fallback_port=fallback_port,
+        server_name="0.0.0.0",
+        share=share_enabled,
+        allowed_paths=[str(root_dir)],
+        prevent_thread_lock=False
+    )

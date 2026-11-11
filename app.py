@@ -4,6 +4,13 @@ Automatically starts Ollama in the background on Hugging Face Spaces (16 GB RAM)
 and launches the Multi-Assistant Gradio UI immediately to prevent startup timeouts.
 """
 
+import sys
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+except Exception:
+    pass
+
 # Compatibility Shim: Gradio 4.x oauth expects huggingface_hub.HfFolder
 try:
     import huggingface_hub
@@ -58,6 +65,19 @@ try:
     @spaces.GPU
     def zerogpu_probe():
         return True
+except Exception:
+    pass
+
+# Compatibility Shim: Gradio Windows frpc tunnel .exe extension
+try:
+    import gradio.tunneling
+    if os.name == "nt" and not gradio.tunneling.BINARY_PATH.endswith(".exe"):
+        old_bin = gradio.tunneling.BINARY_PATH
+        new_bin = old_bin + ".exe"
+        if os.path.exists(old_bin) and not os.path.exists(new_bin):
+            import shutil
+            shutil.copy2(old_bin, new_bin)
+        gradio.tunneling.BINARY_PATH = new_bin
 except Exception:
     pass
 
@@ -155,6 +175,31 @@ if os.environ.get("SPACE_ID") or os.environ.get("HF_SPACE") or sys.platform.star
 from frontend.app import demo
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 7860))
-    print(f"Launching Gradio application on 0.0.0.0:{port}...")
-    demo.launch(server_name="0.0.0.0", server_port=port, allowed_paths=[str(root_dir)])
+    from backend.core.port_utils import find_available_port, launch_with_port_fallback, get_process_on_port
+    
+    preferred_port = int(os.environ.get("PORT", 7860))
+    fallback_port = int(os.environ.get("FALLBACK_PORT", 7861))
+
+    # Resolve available port, automatically checking existing process and falling back to 7861
+    assigned_port, conflict_proc = find_available_port(
+        preferred_port=preferred_port,
+        fallback_port=fallback_port
+    )
+
+    _, local_url, share_url, final_port = launch_with_port_fallback(
+        demo,
+        preferred_port=assigned_port,
+        fallback_port=fallback_port,
+        server_name="0.0.0.0",
+        share=True,
+        allowed_paths=[str(root_dir)],
+        prevent_thread_lock=True
+    )
+    if share_url:
+        with open("public_url.txt", "w", encoding="utf-8") as f:
+            f.write(share_url)
+        print("=" * 60, flush=True)
+        print(f"🌐 PUBLIC URL: {share_url}", flush=True)
+        print("=" * 60, flush=True)
+    print(f"🚀 Server running on local: {local_url} (Port {final_port})", flush=True)
+    demo.block_thread()

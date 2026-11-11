@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 SUPPORTED_AGENTS = {
     "study_agent",
+    "study_planner_agent",
     "exam_agent",
     "coding_agent",
     "project_agent",
@@ -22,15 +23,69 @@ SUPPORTED_AGENTS = {
 
 def router_node(state: AgentState):
     """Orchestrator to route to the correct agent based on the task"""
-    llm = get_llm()
+    # 1. Fast-path: Explicit agent or task_type already requested in state
+    explicit_agent = state.get("next_agent")
+    if explicit_agent and explicit_agent in SUPPORTED_AGENTS:
+        return {"next_agent": explicit_agent}
+
+    task_type = state.get("task_type")
+    if task_type:
+        task_map = {
+            "exam": "exam_agent",
+            "exam_prep": "exam_agent",
+            "study_planner": "study_planner_agent",
+            "study_plan": "study_planner_agent",
+            "study": "study_agent",
+            "coding": "coding_agent",
+            "coding_lab": "coding_agent",
+            "project": "project_agent",
+            "document": "document_agent",
+            "audio": "audio_agent",
+            "video": "video_agent",
+            "memory": "memory_agent",
+            "personalization": "personalization_agent",
+        }
+        if task_type in task_map:
+            return {"next_agent": task_map[task_type]}
+
     messages = state.get("messages", [])
     
+    # Extract recent user text for fast-path heuristic
+    last_user_text = ""
+    for m in reversed(messages):
+        if isinstance(m, HumanMessage) or getattr(m, "type", "") == "human":
+            last_user_text = str(getattr(m, "content", "")).lower()
+            break
+
+    # Fast-path 3: High-confidence keyword heuristics (0ms routing latency, eliminates ~45s LLM router delay)
+    if any(w in last_user_text for w in ["study plan", "study schedule", "timetable", "revision plan", "hours per day", "study roadmap"]):
+        return {"next_agent": "study_planner_agent"}
+    elif any(w in last_user_text for w in ["exam", "quiz", "mock test", "test questions", "mcq", "multiple choice", "practice questions"]):
+        return {"next_agent": "exam_agent"}
+    elif any(w in last_user_text for w in ["debug", "def ", "function", "class ", "python", "java", "c++", "javascript", "algorithm", "dsa", "syntax error", "runtime error", "leetcode", "code"]):
+        return {"next_agent": "coding_agent"}
+    elif any(w in last_user_text for w in ["project idea", "project architecture", "tech stack", "build an app", "module breakdown"]):
+        return {"next_agent": "project_agent"}
+    elif any(w in last_user_text for w in ["flashcard", "flashcards", "mnemonic", "spaced repetition", "anki", "memorize"]):
+        return {"next_agent": "memory_agent"}
+    elif any(w in last_user_text for w in ["video script", "storyboard", "scene 1", "visual cue", "create a video script"]):
+        return {"next_agent": "video_agent"}
+    elif any(w in last_user_text for w in ["audio script", "podcast script", "voiceover", "spoken explanation"]):
+        return {"next_agent": "audio_agent"}
+    elif any(w in last_user_text for w in ["document", "pdf", "docx", "summarize notes", "summarize this text"]):
+        return {"next_agent": "document_agent"}
+    elif not state.get("use_llm_router", False):
+        # Default fast path for conversational assistant (explaining concepts, general Q&A, greetings)
+        return {"next_agent": "study_agent"}
+
+    llm = get_llm()
     system_prompt = """You are the Orchestrator Agent for an AI Student Assistant.
 Your job is to analyze the user's request and determine which specialized agent should handle it.
 Available Agents:
-- study_agent: Explains concepts, creates study plans, generates notes/summaries.
-- exam_agent: Creates quizzes, mock tests, important questions.
-- coding_agent: Debugs code, explains code, DSA trainer.
+- study_planner_agent: Creates structured daily/weekly study plans, timetables, and learning milestones.
+- study_agent: Explains concepts, teaches topics simply, and generates summaries.
+- exam_agent: Creates quizzes, mock tests, important questions, and exam preparation.
+- coding_agent: Debugs code, explains algorithms, writes code, DSA trainer.
 - project_agent: Generates project ideas, architectures, documentation.
 - document_agent: Analyzes uploaded documents, text files, and notes.
 - audio_agent: Text to speech and audio learning assistant.
@@ -57,26 +112,51 @@ Respond with ONLY a JSON object containing the `next_agent` key. Example: {"next
         if next_agent not in SUPPORTED_AGENTS:
             next_agent = "study_agent"
     except Exception as e:
-        logger.warning(f"Router parsing failed ({e}). Defaulting to 'study_agent'")
+        logger.warning(f"Router parsing failed ({e}). Defaulting to study_agent.")
         next_agent = "study_agent"
         
     return {"next_agent": next_agent}
 
+def study_planner_node(state: AgentState):
+    llm = get_llm()
+    system_prompt = (
+        "You are an expert AI Study Planner and Academic Strategist. "
+        "Create personalized, realistic, and highly structured day-by-day or week-by-week study plans tailored to the student's level, timeline, and available hours. "
+        "Include specific topics, proven learning techniques (Active Recall, Spaced Repetition, Pomodoro), actionable milestones, practice exercises, and review checkpoints. Format cleanly in Markdown."
+    )
+    response = llm.invoke([SystemMessage(content=system_prompt)] + state["messages"])
+    return {"messages": [response], "generated_content": {"type": "study_plan", "content": response.content}}
+
 def study_node(state: AgentState):
     llm = get_llm()
-    system_prompt = "You are an expert AI Teacher. Explain concepts simply, step-by-step with real-world examples."
+    system_prompt = (
+        "You are an expert AI Student Assistant and Dedicated Academic Tutor. "
+        "Provide helpful, accurate, and engaging explanations tailored to the student's questions. "
+        "Break down complex concepts step-by-step with intuitive analogies and concrete real-world examples. "
+        "Answer direct questions thoroughly, provide study tips, and format your response cleanly in Markdown."
+    )
     response = llm.invoke([SystemMessage(content=system_prompt)] + state["messages"])
     return {"messages": [response], "generated_content": {"type": "study", "content": response.content}}
 
 def exam_node(state: AgentState):
     llm = get_llm()
-    system_prompt = "You are an Exam Coach. Create quizzes, predict important questions, and prepare mock tests."
+    system_prompt = (
+        "You are an expert AI Exam Preparation Coach and Assessment Specialist. "
+        "Your objective is to generate rigorous, high-yield educational exam materials, mock tests, quizzes, and revision questions. "
+        "Structure mock tests with clear question numbering, 4 distinct options (A, B, C, D) for multiple choice, and provide an Answer Key with detailed explanations at the end. "
+        "Ensure questions accurately test conceptual understanding, critical thinking, and problem solving. Format beautifully in Markdown."
+    )
     response = llm.invoke([SystemMessage(content=system_prompt)] + state["messages"])
     return {"messages": [response], "generated_content": {"type": "exam", "content": response.content}}
 
 def coding_node(state: AgentState):
     llm = get_llm()
-    system_prompt = "You are a Senior Coding Mentor. Debug code, explain step-by-step, and optimize solutions."
+    system_prompt = (
+        "You are a Senior Software Engineer and Expert Coding Mentor. "
+        "Analyze, debug, explain, and optimize code with surgical precision. "
+        "Always provide corrected, production-ready code snippets with comments, explain the underlying logic and bugs step-by-step, "
+        "and analyze Time and Space Complexity (Big-O notation). Format code cleanly in Markdown code blocks."
+    )
     response = llm.invoke([SystemMessage(content=system_prompt)] + state["messages"])
     return {"messages": [response], "generated_content": {"type": "coding", "content": response.content}}
 
@@ -123,6 +203,7 @@ def build_graph():
     # Add all nodes
     workflow.add_node("orchestrator", router_node)
     workflow.add_node("study_agent", study_node)
+    workflow.add_node("study_planner_agent", study_planner_node)
     workflow.add_node("exam_agent", exam_node)
     workflow.add_node("coding_agent", coding_node)
     workflow.add_node("project_agent", project_node)
