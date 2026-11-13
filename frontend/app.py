@@ -120,14 +120,19 @@ log_startup_diagnostics()
 
 
 def get_ollama_status_markdown() -> str:
-    """Generates a health status banner for the Model-Free Intelligence Engine."""
+    """Generates an accurate real-time health status banner for Ollama & deepseek-coder:1.3b."""
     try:
         from backend.core.config import settings
         status = check_ollama_connection()
         target_model = settings.MODEL_NAME
-        return f"🟢 **Model-Free Intelligence Engine Active** | Model: `{target_model}` (100% Local • Zero-API • Zero-Cost)"
+        if status.get("connected") and status.get("model_available"):
+            return f"🟢 **Ollama Server Online** | Model: `{target_model}` | Server: `{settings.OLLAMA_BASE_URL}` (100% Local • Zero-API • Zero-Cost)"
+        elif status.get("connected"):
+            return f"🟡 **Ollama Server Online** | Model: `{target_model}` not found (Run: `ollama pull {target_model}`)"
+        else:
+            return f"🔵 **Local Fallback Engine Active** | Model: `{target_model}` (Ollama Offline: Run `ollama run {target_model}` to activate)"
     except Exception as e:
-        return f"🟢 **Model-Free Intelligence Engine Active** | 100% Local • Zero-API"
+        return f"🟢 **Intelligence Engine Active** | Model: `deepseek-coder:1.3b`"
 
 
 def save_temp_file(content: str, filename: str) -> str:
@@ -357,8 +362,8 @@ def chat_respond(user_message: str, chat_history: list, session_id: str, chatbot
             assistant_response = (
                 f'<div style="font-family: system-ui, -apple-system, sans-serif; padding: 4px;">'
                 f'<p style="margin: 0 0 10px 0; font-size: 15px; font-weight: 600; color: #e2e8f0;">🖼️ <strong>Prompt:</strong> <em>"{user_prompt}"</em></p>'
-                f'<div style="margin-bottom: 12px; border-radius: 12px; overflow: hidden; border: 1px solid #334155; box-shadow: 0 4px 12px rgba(0,0,0,0.3); background: #0f172a;">'
-                f'<img src="{img_url}" alt="{user_prompt}" style="width: 100%; height: auto; display: block; max-height: 450px; object-fit: contain; background: #0f172a;" />'
+                f'<div style="margin-bottom: 12px; border-radius: 12px; overflow: hidden; border: 1px solid #274170; box-shadow: 0 4px 12px rgba(12,21,38,0.4); background: #17284a;">'
+                f'<img src="{img_url}" alt="{user_prompt}" style="width: 100%; height: auto; display: block; max-height: 450px; object-fit: contain; background: #111f35;" />'
                 f'</div>'
                 f'<div>'
                 f'<a href="{img_url}" download="{img_path_obj.name}" target="_blank" style="display: inline-flex; align-items: center; gap: 8px; padding: 9px 18px; background: linear-gradient(135deg, #2563eb, #1d4ed8); color: #ffffff; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px; box-shadow: 0 2px 6px rgba(37,99,235,0.4); transition: all 0.2s ease;">'
@@ -396,13 +401,13 @@ def chat_respond(user_message: str, chat_history: list, session_id: str, chatbot
                     f'<div style="font-family: system-ui, -apple-system, sans-serif; padding: 4px;">'
                     f'<p style="margin: 0 0 10px 0; font-size: 15px; font-weight: 600; color: #e2e8f0;">🖼️ <strong>Transformation:</strong> <em>"{user_prompt}"</em></p>'
                     f'<div style="display: flex; gap: 14px; margin-bottom: 14px; flex-wrap: wrap;">'
-                    f'<div style="flex: 1; min-width: 260px; border-radius: 12px; overflow: hidden; border: 1px solid #334155; box-shadow: 0 4px 12px rgba(0,0,0,0.3); background: #0f172a;">'
-                    f'<div style="background: #1e293b; padding: 6px 12px; font-size: 13px; font-weight: 600; color: #94a3b8;">Original Reference</div>'
-                    f'<img src="{ref_url}" alt="Original Reference" style="width: 100%; height: auto; display: block; max-height: 380px; object-fit: contain; background: #0f172a;" />'
+                    f'<div style="flex: 1; min-width: 260px; border-radius: 12px; overflow: hidden; border: 1px solid #274170; box-shadow: 0 4px 12px rgba(12,21,38,0.4); background: #17284a;">'
+                    f'<div style="background: #13223f; padding: 6px 12px; font-size: 13px; font-weight: 600; color: #cbd5e1;">Original Reference</div>'
+                    f'<img src="{ref_url}" alt="Original Reference" style="width: 100%; height: auto; display: block; max-height: 380px; object-fit: contain; background: #111f35;" />'
                     f'</div>'
-                    f'<div style="flex: 1; min-width: 260px; border-radius: 12px; overflow: hidden; border: 1px solid #3b82f6; box-shadow: 0 4px 12px rgba(59,130,246,0.3); background: #0f172a;">'
+                    f'<div style="flex: 1; min-width: 260px; border-radius: 12px; overflow: hidden; border: 1px solid #38bdf8; box-shadow: 0 4px 12px rgba(56,189,248,0.3); background: #17284a;">'
                     f'<div style="background: #1d4ed8; padding: 6px 12px; font-size: 13px; font-weight: 600; color: #ffffff;">✨ Transformed Output</div>'
-                    f'<img src="{img_url}" alt="{user_prompt}" style="width: 100%; height: auto; display: block; max-height: 380px; object-fit: contain; background: #0f172a;" />'
+                    f'<img src="{img_url}" alt="{user_prompt}" style="width: 100%; height: auto; display: block; max-height: 380px; object-fit: contain; background: #111f35;" />'
                     f'</div>'
                     f'</div>'
                     f'<div>'
@@ -439,7 +444,7 @@ def chat_respond(user_message: str, chat_history: list, session_id: str, chatbot
             assistant_response = (
                 f'<div style="font-family: system-ui, -apple-system, sans-serif; padding: 4px;">'
                 f'<p style="margin: 0 0 10px 0; font-size: 15px; font-weight: 600; color: #e2e8f0;">🎬 <strong>Video Topic:</strong> <em>"{user_prompt}"</em></p>'
-                f'<div style="margin-bottom: 12px; border-radius: 12px; overflow: hidden; border: 1px solid #334155; box-shadow: 0 4px 12px rgba(0,0,0,0.3); background: #0f172a;">'
+                f'<div style="margin-bottom: 12px; border-radius: 12px; overflow: hidden; border: 1px solid #274170; box-shadow: 0 4px 12px rgba(12,21,38,0.4); background: #17284a;">'
                 f'<video controls src="{vid_url}" width="100%" style="max-height: 420px; display: block; width: 100%; border-radius: 12px;"></video>'
                 f'</div>'
                 f'<div>'
@@ -499,13 +504,13 @@ def chat_respond(user_message: str, chat_history: list, session_id: str, chatbot
                     f'<div style="font-family: system-ui, -apple-system, sans-serif; padding: 4px;">'
                     f'<p style="margin: 0 0 10px 0; font-size: 15px; font-weight: 600; color: #e2e8f0;">🎬 <strong>Animated Video:</strong> <em>"{user_prompt}"</em></p>'
                     f'<div style="display: flex; gap: 14px; margin-bottom: 14px; flex-wrap: wrap;">'
-                    f'<div style="flex: 1; min-width: 260px; border-radius: 12px; overflow: hidden; border: 1px solid #334155; box-shadow: 0 4px 12px rgba(0,0,0,0.3); background: #0f172a;">'
-                    f'<div style="background: #1e293b; padding: 6px 12px; font-size: 13px; font-weight: 600; color: #94a3b8;">📷 Original Reference Image</div>'
-                    f'<img src="{ref_url}" alt="Original Reference" style="width: 100%; height: auto; display: block; max-height: 380px; object-fit: contain; background: #0f172a;" />'
+                    f'<div style="flex: 1; min-width: 260px; border-radius: 12px; overflow: hidden; border: 1px solid #274170; box-shadow: 0 4px 12px rgba(12,21,38,0.4); background: #17284a;">'
+                    f'<div style="background: #13223f; padding: 6px 12px; font-size: 13px; font-weight: 600; color: #cbd5e1;">📷 Original Reference Image</div>'
+                    f'<img src="{ref_url}" alt="Original Reference" style="width: 100%; height: auto; display: block; max-height: 380px; object-fit: contain; background: #111f35;" />'
                     f'</div>'
-                    f'<div style="flex: 1; min-width: 260px; border-radius: 12px; overflow: hidden; border: 1px solid #10b981; box-shadow: 0 4px 12px rgba(16,185,129,0.3); background: #0f172a;">'
+                    f'<div style="flex: 1; min-width: 260px; border-radius: 12px; overflow: hidden; border: 1px solid #10b981; box-shadow: 0 4px 12px rgba(16,185,129,0.3); background: #17284a;">'
                     f'<div style="background: #059669; padding: 6px 12px; font-size: 13px; font-weight: 600; color: #ffffff;">✨ Rendered Video Animation (MP4)</div>'
-                    f'<video controls autoplay loop muted src="{vid_url}" style="width: 100%; height: auto; display: block; max-height: 380px; object-fit: contain; background: #0f172a;"></video>'
+                    f'<video controls autoplay loop muted src="{vid_url}" style="width: 100%; height: auto; display: block; max-height: 380px; object-fit: contain; background: #111f35;"></video>'
                     f'</div>'
                     f'</div>'
                     f'<div>'
@@ -1004,13 +1009,13 @@ def render_comments_explorer_view(
     empty_df = pd.DataFrame(columns=["#", "Author", "Sentiment", "Likes", "Published At", "Reply?", "Comment"])
     if not comments_pool:
         empty_summary = """
-        <div style="background: #0f172a; border: 1px dashed #334155; border-radius: 12px; padding: 22px; text-align: center; color: #94a3b8;">
+        <div style="background: #13223f; border: 1px dashed #274170; border-radius: 12px; padding: 22px; text-align: center; color: #cbd5e1;">
             <div style="font-size: 26px; margin-bottom: 6px;">💬</div>
-            <strong style="color: #cbd5e1; font-size: 15px;">No comments loaded yet.</strong>
-            <p style="margin: 4px 0 0 0; font-size: 13px;">Enter a YouTube URL above, choose your comment retrieval window (e.g. 10, 25, 50, 100, or All Available Comments), then click <strong>Analyze Video 🚀</strong>.</p>
+            <strong style="color: #ffffff; font-size: 15px;">No comments loaded yet.</strong>
+            <p style="margin: 4px 0 0 0; font-size: 13px; color: #e2e8f0;">Enter a YouTube URL above, choose your comment retrieval window (e.g. 10, 25, 50, 100, or All Available Comments), then click <strong>Analyze Video 🚀</strong>.</p>
         </div>
         """
-        empty_feed = """<div style="text-align: center; padding: 25px; color: #64748b;">No comments available.</div>"""
+        empty_feed = """<div style="text-align: center; padding: 25px; color: #cbd5e1;">No comments available.</div>"""
         return empty_summary, empty_feed, empty_df, "Showing 0 comments", 1, 10
 
     # 1. Compute Pool Counts
@@ -1076,22 +1081,22 @@ def render_comments_explorer_view(
     # 6. Build Summary Banner HTML
     total_on_yt_badge = ""
     if total_video_comments is not None:
-        total_on_yt_badge = f"""<span style="background: #1e293b; color: #94a3b8; border: 1px solid #334155; font-size: 12px; padding: 3px 9px; border-radius: 12px; font-weight: 500;">Total on YouTube: <strong>{total_video_comments:,}</strong></span>"""
+        total_on_yt_badge = f"""<span style="background: #17284a; color: #cbd5e1; border: 1px solid #274170; font-size: 12px; padding: 3px 9px; border-radius: 12px; font-weight: 500;">Total on YouTube: <strong>{total_video_comments:,}</strong></span>"""
 
     summary_html = f"""
-    <div style="background: #0f172a; border: 1px solid #334155; border-radius: 12px; padding: 14px 18px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+    <div style="background: #13223f; border: 1px solid #274170; border-radius: 12px; padding: 14px 18px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
         <div>
             <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                <h4 style="margin: 0; color: #f8fafc; font-size: 16px; font-weight: bold;">💬 Audience Comments Explorer</h4>
+                <h4 style="margin: 0; color: #ffffff; font-size: 16px; font-weight: bold;">💬 Audience Comments Explorer</h4>
                 <span style="background: #2563eb; color: #fff; font-size: 12px; padding: 3px 10px; border-radius: 12px; font-weight: bold;">{total_pool} Comments Retrieved</span>
                 {total_on_yt_badge}
             </div>
-            <p style="margin: 4px 0 0 0; color: #94a3b8; font-size: 12.5px;">All retrieved comments are analyzed and preserved without artificial truncation. Filter, search, and paginate below.</p>
+            <p style="margin: 4px 0 0 0; color: #cbd5e1; font-size: 12.5px;">All retrieved comments are analyzed and preserved without artificial truncation. Filter, search, and paginate below.</p>
         </div>
         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-            <span style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: bold;">🟢 {pos_count} Positive</span>
-            <span style="background: rgba(148, 163, 184, 0.15); color: #cbd5e1; border: 1px solid rgba(148, 163, 184, 0.3); padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: bold;">⚪ {neu_count} Neutral</span>
-            <span style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: bold;">🔴 {neg_count} Negative</span>
+            <span style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: bold;">🟢 {pos_count} Positive</span>
+            <span style="background: #17284a; color: #cbd5e1; border: 1px solid #274170; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: bold;">⚪ {neu_count} Neutral</span>
+            <span style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: bold;">🔴 {neg_count} Negative</span>
         </div>
     </div>
     """
@@ -1099,7 +1104,7 @@ def render_comments_explorer_view(
     # 7. Build Feed HTML Cards
     if not displayed:
         feed_html = """
-        <div style="text-align: center; padding: 35px; color: #94a3b8; background: #0f172a; border-radius: 12px; border: 1px dashed #334155;">
+        <div style="text-align: center; padding: 35px; color: #cbd5e1; background: #13223f; border-radius: 12px; border: 1px dashed #274170;">
             🔍 No comments found matching current filter or search criteria.
         </div>
         """
@@ -1119,41 +1124,41 @@ def render_comments_explorer_view(
                 date_display = pub_date or "Recent"
 
             if c.get("is_reply"):
-                reply_badge = """<span style="background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">↪️ Reply</span>"""
+                reply_badge = """<span style="background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">↪️ Reply</span>"""
             elif c.get("reply_count", 0) > 0:
                 rc = c.get("reply_count", 0)
-                reply_badge = f"""<span style="background: rgba(148, 163, 184, 0.15); color: #cbd5e1; border: 1px solid rgba(148, 163, 184, 0.3); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">💬 {rc} {'replies' if rc > 1 else 'reply'}</span>"""
+                reply_badge = f"""<span style="background: #13223f; color: #cbd5e1; border: 1px solid #274170; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">💬 {rc} {'replies' if rc > 1 else 'reply'}</span>"""
             else:
-                reply_badge = """<span style="background: rgba(100, 116, 139, 0.15); color: #94a3b8; border: 1px solid rgba(100, 116, 139, 0.25); padding: 2px 7px; border-radius: 4px; font-size: 11px;">Thread</span>"""
+                reply_badge = """<span style="background: #111f35; color: #cbd5e1; border: 1px solid #274170; padding: 2px 7px; border-radius: 4px; font-size: 11px;">Thread</span>"""
 
             cat = c.get("category", "Neutral")
             score = c.get("score", 0.0)
             if cat == "Positive":
                 score_str = f"+{score:.1f}" if score > 0 else f"{score:.1f}"
-                sentiment_badge = f"""<span style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: bold;">🟢 Positive ({score_str})</span>"""
+                sentiment_badge = f"""<span style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: bold;">🟢 Positive ({score_str})</span>"""
             elif cat == "Negative":
                 score_str = f"{score:.1f}"
-                sentiment_badge = f"""<span style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.35); padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: bold;">🔴 Negative ({score_str})</span>"""
+                sentiment_badge = f"""<span style="background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: bold;">🔴 Negative ({score_str})</span>"""
             else:
-                sentiment_badge = """<span style="background: rgba(148, 163, 184, 0.15); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.35); padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: bold;">⚪ Neutral</span>"""
+                sentiment_badge = """<span style="background: #111f35; color: #cbd5e1; border: 1px solid #274170; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: bold;">⚪ Neutral</span>"""
 
             if avatar_url:
                 avatar_img_html = f"""<img src="{avatar_url}" style="width: 36px; height: 36px; border-radius: 50%; object-fit: cover;" onerror="this.onerror=null; this.src='https://api.dicebear.com/7.x/initials/svg?seed={urllib.parse.quote(author)}';" />"""
             else:
-                avatar_img_html = f"""<div style="width: 36px; height: 36px; border-radius: 50%; background: #3b82f6; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px;">{initial}</div>"""
+                avatar_img_html = f"""<div style="width: 36px; height: 36px; border-radius: 50%; background: #2563eb; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px;">{initial}</div>"""
 
             likes = c.get("likes", 0)
-            likes_html = f"""<span style="background: #0f172a; border: 1px solid #334155; padding: 2px 8px; border-radius: 6px; color: #38bdf8; font-size: 11px; font-weight: bold;">👍 {likes}</span>"""
+            likes_html = f"""<span style="background: #111f35; border: 1px solid #274170; padding: 2px 8px; border-radius: 6px; color: #38bdf8; font-size: 11px; font-weight: bold;">👍 {likes}</span>"""
             text_escaped = html.escape(c.get("text", "")).replace("\n", "<br/>")
 
             card = f"""
-            <div style="background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.25);">
+            <div style="background: #17284a; border: 1px solid #274170; border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; box-shadow: 0 4px 12px rgba(12,21,38,0.3);">
                 <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;">
                     <div style="display: flex; align-items: center; gap: 10px;">
                         {avatar_img_html}
                         <div>
-                            <div style="font-weight: 600; color: #f8fafc; font-size: 13.5px;">{author}</div>
-                            <div style="font-size: 11px; color: #94a3b8;">{date_display}</div>
+                            <div style="font-weight: 700; color: #ffffff; font-size: 14px;">{author}</div>
+                            <div style="font-size: 11.5px; color: #cbd5e1;">{date_display}</div>
                         </div>
                     </div>
                     <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
@@ -1162,7 +1167,7 @@ def render_comments_explorer_view(
                         {likes_html}
                     </div>
                 </div>
-                <div style="margin: 0; color: #e2e8f0; font-size: 13.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-word;">{text_escaped}</div>
+                <div style="margin: 0; color: #f1f5f9; font-size: 13.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-word;">{text_escaped}</div>
             </div>
             """
             cards_html_list.append(card)
@@ -1350,37 +1355,37 @@ def run_youtube_intelligence_ui(
         comments_str = f"{m.get('comment_count'):,}" if m.get('comment_count') is not None else "N/A (API Key Required)"
 
         meta_html = f"""
-        <div style="background: #0f172a; border: 1px solid #334155; border-radius: 12px; padding: 18px; margin-bottom: 15px;">
+        <div style="background: #17284a; border: 1px solid #274170; border-radius: 12px; padding: 18px; margin-bottom: 15px; box-shadow: 0 4px 16px rgba(12,21,38,0.4);">
             <div style="display: flex; gap: 20px; flex-wrap: wrap;">
                 <div style="flex: 1; min-width: 280px; max-width: 380px;">
                     <img src="{m.get('thumbnail_url')}" style="width: 100%; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.5);" />
                 </div>
                 <div style="flex: 2; min-width: 300px;">
                     <span style="background: #2563eb; color: #fff; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: bold;">{m.get('source')}</span>
-                    <h3 style="margin: 8px 0 6px 0; color: #f8fafc; font-size: 20px;">{m.get('title')}</h3>
-                    <p style="margin: 0 0 12px 0; color: #94a3b8; font-size: 14px;"><strong>Channel:</strong> {m.get('channel')} | <strong>Duration:</strong> {m.get('duration')}</p>
+                    <h3 style="margin: 8px 0 6px 0; color: #ffffff; font-size: 20px; font-weight: 800;">{m.get('title')}</h3>
+                    <p style="margin: 0 0 12px 0; color: #cbd5e1; font-size: 14px;"><strong>Channel:</strong> {m.get('channel')} | <strong>Duration:</strong> {m.get('duration')}</p>
                     <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px;">
-                        <div style="background: #1e293b; padding: 8px 14px; border-radius: 8px; border: 1px solid #334155;">
-                            <span style="color: #64748b; font-size: 12px;">Views</span>
+                        <div style="background: #111f35; padding: 8px 14px; border-radius: 8px; border: 1px solid #274170;">
+                            <span style="color: #cbd5e1; font-size: 12px; font-weight: 600;">Views</span>
                             <div style="color: #38bdf8; font-size: 16px; font-weight: bold;">{views_str}</div>
                         </div>
-                        <div style="background: #1e293b; padding: 8px 14px; border-radius: 8px; border: 1px solid #334155;">
-                            <span style="color: #64748b; font-size: 12px;">Likes</span>
+                        <div style="background: #111f35; padding: 8px 14px; border-radius: 8px; border: 1px solid #274170;">
+                            <span style="color: #cbd5e1; font-size: 12px; font-weight: 600;">Likes</span>
                             <div style="color: #4ade80; font-size: 16px; font-weight: bold;">{likes_str}</div>
                         </div>
-                        <div style="background: #1e293b; padding: 8px 14px; border-radius: 8px; border: 1px solid #334155;">
-                            <span style="color: #64748b; font-size: 12px;">Comments</span>
+                        <div style="background: #111f35; padding: 8px 14px; border-radius: 8px; border: 1px solid #274170;">
+                            <span style="color: #cbd5e1; font-size: 12px; font-weight: 600;">Comments</span>
                             <div style="color: #facc15; font-size: 16px; font-weight: bold;">{comments_str}</div>
                         </div>
-                        <div style="background: #1e293b; padding: 8px 14px; border-radius: 8px; border: 1px solid #334155;">
-                            <span style="color: #64748b; font-size: 12px;">Speaking Rate</span>
-                            <div style="color: #c084fc; font-size: 16px; font-weight: bold;">{t.get('speaking_rate_wpm')} WPM</div>
+                        <div style="background: #111f35; padding: 8px 14px; border-radius: 8px; border: 1px solid #274170;">
+                            <span style="color: #cbd5e1; font-size: 12px; font-weight: 600;">Speaking Rate</span>
+                            <div style="color: #60a5fa; font-size: 16px; font-weight: bold;">{t.get('speaking_rate_wpm')} WPM</div>
                         </div>
                     </div>
-                    <p style="margin: 0; color: #cbd5e1; font-size: 13px;"><em>{t.get('pace_category')}</em> • {t.get('word_count')} words</p>
+                    <p style="margin: 0; color: #e2e8f0; font-size: 13px;"><em>{t.get('pace_category')}</em> • {t.get('word_count')} words</p>
                 </div>
             </div>
-            <div style="margin-top: 14px; padding: 8px 14px; background: #1e293b; border-left: 4px solid #f59e0b; border-radius: 4px; font-size: 12px; color: #fbbf24;">
+            <div style="margin-top: 14px; padding: 8px 14px; background: #13223f; border-left: 4px solid #f59e0b; border-radius: 4px; font-size: 12px; color: #fbbf24;">
                 ℹ️ <strong>Authorized Analytics Notice:</strong> {m.get('authorized_analytics_note')}
             </div>
         </div>
@@ -1391,27 +1396,27 @@ def run_youtube_intelligence_ui(
         neg_p = s.get("negative_percent", 0)
 
         sentiment_html = f"""
-        <div style="background: #0f172a; border: 1px solid #334155; border-radius: 12px; padding: 18px; margin-bottom: 15px;">
-            <h4 style="margin: 0 0 10px 0; color: #f8fafc; font-size: 17px;">💬 Audience Sentiment: {s.get('sentiment_label')}</h4>
-            <div style="background: #1e293b; border-radius: 8px; height: 18px; overflow: hidden; display: flex; margin-bottom: 14px;">
+        <div style="background: #17284a; border: 1px solid #274170; border-radius: 12px; padding: 18px; margin-bottom: 15px; box-shadow: 0 4px 16px rgba(12,21,38,0.4);">
+            <h4 style="margin: 0 0 10px 0; color: #ffffff; font-size: 17px; font-weight: 700;">💬 Audience Sentiment: {s.get('sentiment_label')}</h4>
+            <div style="background: #111f35; border-radius: 8px; height: 18px; overflow: hidden; display: flex; margin-bottom: 14px; border: 1px solid #274170;">
                 <div style="background: #10b981; width: {pos_p}%;" title="Positive: {pos_p}%"></div>
                 <div style="background: #64748b; width: {neu_p}%;" title="Neutral: {neu_p}%"></div>
                 <div style="background: #ef4444; width: {neg_p}%;" title="Negative: {neg_p}%"></div>
             </div>
-            <div style="display: flex; gap: 20px; font-size: 14px; margin-bottom: 16px;">
-                <span style="color: #10b981; font-weight: bold;">🟢 Positive: {pos_p}%</span>
-                <span style="color: #94a3b8; font-weight: bold;">⚪ Neutral: {neu_p}%</span>
-                <span style="color: #ef4444; font-weight: bold;">🔴 Negative: {neg_p}%</span>
-                <span style="color: #cbd5e1; margin-left: auto;">(Total Sampled: {s.get('total_analyzed')} comments)</span>
+            <div style="display: flex; gap: 20px; font-size: 14px; margin-bottom: 16px; flex-wrap: wrap;">
+                <span style="color: #34d399; font-weight: bold;">🟢 Positive: {pos_p}%</span>
+                <span style="color: #cbd5e1; font-weight: bold;">⚪ Neutral: {neu_p}%</span>
+                <span style="color: #f87171; font-weight: bold;">🔴 Negative: {neg_p}%</span>
+                <span style="color: #e2e8f0; margin-left: auto;">(Total Sampled: {s.get('total_analyzed')} comments)</span>
             </div>
             <div style="display: flex; gap: 16px; flex-wrap: wrap;">
-                <div style="flex: 1; min-width: 250px; background: #1e293b; padding: 12px; border-radius: 8px; border-top: 3px solid #10b981;">
-                    <strong style="color: #10b981;">🌟 Top Praised Elements:</strong>
+                <div style="flex: 1; min-width: 250px; background: #13223f; padding: 12px; border-radius: 8px; border-top: 3px solid #10b981; border: 1px solid #274170;">
+                    <strong style="color: #34d399;">🌟 Top Praised Elements:</strong>
                     <ul style="margin: 6px 0 0 16px; padding: 0; color: #e2e8f0; font-size: 13px;">
                         {''.join(f'<li>"{theme}"</li>' for theme in s.get('top_positive_themes', []))}
                     </ul>
                 </div>
-                <div style="flex: 1; min-width: 250px; background: #1e293b; padding: 12px; border-radius: 8px; border-top: 3px solid #ef4444;">
+                <div style="flex: 1; min-width: 250px; background: #13223f; padding: 12px; border-radius: 8px; border-top: 3px solid #ef4444; border: 1px solid #274170;">
                     <strong style="color: #f87171;">⚠️ Constructive Feedback:</strong>
                     <ul style="margin: 6px 0 0 16px; padding: 0; color: #e2e8f0; font-size: 13px;">
                         {''.join(f'<li>"{crit}"</li>' for crit in s.get('constructive_criticism', []))}
