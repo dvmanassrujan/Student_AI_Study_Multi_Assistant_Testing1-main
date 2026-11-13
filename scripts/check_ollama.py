@@ -1,9 +1,9 @@
 """
-Meta Llama 3.2:latest Ollama Service Diagnostics & Verification Script
+DeepSeek-Coder:1.3b Ollama Service Diagnostics & Verification Script
 Verifies:
 1. Ollama server connection (http://localhost:11434).
-2. Presence and loading of llama3.2:latest.
-3. Live inference across Educational Q&A, Mathematics, Coding, and Summarization.
+2. Presence and loading of deepseek-coder:1.3b.
+3. Live inference across Coding, Algorithms, Educational Q&A, and Mathematics.
 """
 
 import sys
@@ -27,7 +27,7 @@ except ImportError:
 
 def check_ollama():
     print("=" * 65)
-    print("🦙 Meta Llama 3.2:latest Ollama Service Diagnostics")
+    print("⚡ DeepSeek-Coder:1.3b Ollama Service Diagnostics")
     print("=" * 65)
     print(f"Target URL: {OLLAMA_BASE_URL}")
     print(f"Required Model: {OLLAMA_MODEL}")
@@ -47,36 +47,36 @@ def check_ollama():
         print(f"⚠️ Model '{OLLAMA_MODEL}' missing. Run: ollama pull {OLLAMA_MODEL}")
         return False
 
-    print("Executing Live Ollama Educational Inference Tests...")
+    print("Executing Live DeepSeek-Coder:1.3b Educational & Coding Inference Tests...")
     try:
         llm = get_llm()
 
-        # 1. Educational Q&A Test
-        print("\n1. Testing Educational Q&A...")
+        # 1. Coding & DSA Test
+        print("\n1. Testing Coding & DSA Assistance (Python Palindrome)...")
+        c_msg = [
+            SystemMessage(content="You are a Senior Coding Mentor. Provide clean code and brief explanation."),
+            HumanMessage(content="Write a Python function to check if a string is a palindrome.")
+        ]
+        c_resp = llm.invoke(c_msg)
+        print(f"✅ Code Output:\n{c_resp.content.strip()[:250]}...")
+
+        # 2. Educational Q&A Test
+        print("\n2. Testing Educational Q&A...")
         q_msg = [
             SystemMessage(content="You are an expert AI Teacher. Explain clearly and concisely in bullet points."),
-            HumanMessage(content="Explain Photoelectric Effect in 2 short bullet points.")
+            HumanMessage(content="Explain Binary Search in 2 short bullet points.")
         ]
         q_resp = llm.invoke(q_msg)
         print(f"✅ Q&A Output:\n{q_resp.content.strip()[:250]}...")
 
-        # 2. Mathematics Test
-        print("\n2. Testing Mathematical Problem Solving...")
+        # 3. Mathematics Test
+        print("\n3. Testing Mathematical Problem Solving...")
         m_msg = [
             SystemMessage(content="You are a Math Tutor. State the formula and answer concisely."),
             HumanMessage(content="What is the derivative of f(x) = 3x^2 + 5x - 7?")
         ]
         m_resp = llm.invoke(m_msg)
         print(f"✅ Math Output:\n{m_resp.content.strip()[:250]}...")
-
-        # 3. Coding Test
-        print("\n3. Testing Coding & DSA Assistance...")
-        c_msg = [
-            SystemMessage(content="You are a Senior Coding Mentor. Provide clean code and Big-O complexity."),
-            HumanMessage(content="Write a Python function to check if a string is a palindrome.")
-        ]
-        c_resp = llm.invoke(c_msg)
-        print(f"✅ Code Output:\n{c_resp.content.strip()[:250]}...")
 
         # 4. Summarization Test
         print("\n4. Testing Summarization...")
@@ -88,7 +88,7 @@ def check_ollama():
         print(f"✅ Summary Output:\n{s_resp.content.strip()[:250]}...")
 
         print("\n" + "=" * 65)
-        print("🎉 ALL OLLAMA LLAMA 3.2:LATEST TESTS PASSED SUCCESSFULLY!")
+        print("🎉 ALL OLLAMA DEEPSEEK-CODER:1.3B TESTS PASSED SUCCESSFULLY!")
         print("=" * 65)
         return True
 
